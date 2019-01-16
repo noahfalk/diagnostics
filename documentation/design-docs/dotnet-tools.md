@@ -1,5 +1,88 @@
 #Dotnet Diagnostic Tools CLI Design
 
+
+## User workflows
+
+These are canonical examples of the work we'd expect a .Net developer to want to do, and the command line syntax to accomplish that task. The goal is for the steps to be clear, easily discoverable, and unsurprising given the developer's knowledge about the concepts and related tools. Some of the scenarios are marked [Future suggestion] to indicate we have no intention of building such a feature now, but it demonstrates that the CLI design could be reasonably extended.
+
+All of the examples below have the following common setup:
+
+1. A .Net Core application has been built and a runnable binary is available on a given machine
+2. An investigator, who may or may not be the original developer, has at least terminal access to the machine where the application runs
+3. The dotnet SDK has been installed on the machine (this may not be an assumption we want to keep, but lets assume it is true for now)
+4. Source and symbols may or may not exist on the current machine
+5. The current machine may or may not be the one on which the build was performed
+
+
+### Ad-hoc Health Monitoring / 1st Level Performance Triage
+
+The investigator wants to get a high level understanding about how the application is performing. This could be proactive investigation during development, or it could be reacting to testing/user feedback for the application in production. The investigator wants to look at a set of common performance counters printed to the console.
+
+    > dotnet tool install -g dotnet-diag
+    > dotnet diag view stats
+    'view stats' requires argument: -p|--process-id <id>
+    Available .Net Core processes:
+
+     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
+    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
+      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
+     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
+    ...
+    
+    > dotnet diag view stats --process-id 1902
+          ASP.Net Requests/sec       1915
+          ASP.Net Latency (ms)         34   
+          CPU (%)                    78.2
+          Virtual Memory (MB)        1200
+          GC Heap (MB)                784
+          Threads                      23
+          Threadpool queue length     114
+          Exceptions/sec              1.3
+          ...
+          
+
+What did this do? First we installed our diagnostic tool which is called dotnet-diag using the standard global tools installer. Then we ran the 'view stats' command but forgot to specify a process. The command helpfully indicated the parameter was required and displayed a list of running processes that have a .Net Core runtime loaded. Last we ran the 'view stats' command again with a process id which shows a point in time snapshot of the performance statistics. The exact counters to display are TBD, but assume that the list is context sensitive based on the assemblies loaded in the process. 
+
+**Seeing values that refresh periodically in-place**
+
+    > dotnet diag view stats --processId <id> --monitor
+          ASP.Net Requests/sec       1915
+          ASP.Net Latency (ms)         34   
+          CPU (%)                    78.2
+          Virtual Memory (MB)        1200
+          GC Heap (MB)                784
+          Threads                      23
+          Threadpool queue length     114
+          Exceptions/sec              1.3
+       
+      'p' to pause updates, 'r' to resume updates, 'q' to quit
+
+
+
+**Seeing different sets of counters [Future suggestion]**
+
+    > dotnet diag view stats --processId <id> --profile runtime
+
+The --profile option could indicate predefined named sets, comma separated lists of counters, or a configuration file that describes
+
+
+## Open Questions
+
+1. Do we want an alternate installation path that doesn't require the SDK?
+2. Do we have a smaller tool which is collector only?
+3. Do we support command line response files?
+4. Do we support '/' style args that are more common on windows or only '--' style args?
+
+
+    
+
+
+
+
+
+
+## TODO: comments from the earlier thread
+
 Capturing some comments from https://github.com/dotnet/diagnostics/issues/85 as a starting point
 we can edit from. This needs cleanup.
 
@@ -264,7 +347,7 @@ Common options:
 - -hide= regex: Do not show entries that match regex.
 
 
-###Jcmd
+### Jcmd
 
 Java previously had numerous single-role tools such as jhat, jps, jstack, jinfo, etc that did a variety of diagnostic tasks (respectively they show heap analysis, process status, stacks, and runtime/machine info). Starting in Java8 jcmd, a new multi-role tool, offers a super-set of functionality from all those tools. Snippets below are from https://docs.oracle.com/javase/8/docs/technotes/guides/troubleshoot/tooldescr006.html
 
@@ -423,7 +506,7 @@ ProcDump uses CLI convention: ProcDump [options]
 	-?
 	Use -? -e to see example command lines.
 
-###Perfmon
+### Perfmon
 
 Perfmon is a Windows GUI tool that shows interactive performance counters and some reports of system performance. It has a minimal CLI that simply launches different GUI views. 
 

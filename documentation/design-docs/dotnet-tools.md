@@ -1,7 +1,8 @@
 #Dotnet Diagnostic Tools CLI Design
 
 
-## User workflows
+
+# User workflows
 
 These are canonical examples of the work we'd expect a .Net developer to want to do, and the command line syntax to accomplish that task. The goal is for the steps to be clear, easily discoverable, and unsurprising given the developer's knowledge about the concepts and related tools. Some of the scenarios are marked [Future suggestion] to indicate we have no intention of building such a feature now, but it demonstrates that the CLI design could be reasonably extended.
 
@@ -45,7 +46,7 @@ What did this do? First we installed our diagnostic tool which is called dotnet-
 
 **Seeing values that refresh periodically in-place**
 
-    > dotnet diag view stats --processId <id> --monitor
+    > dotnet diag monitor stats --processId <id>
           ASP.Net Requests/sec       1915
           ASP.Net Latency (ms)         34   
           CPU (%)                    78.2
@@ -57,7 +58,7 @@ What did this do? First we installed our diagnostic tool which is called dotnet-
        
       'p' to pause updates, 'r' to resume updates, 'q' to quit
 
-
+Switching from the 'view' verb to 'monitor' verb shows similar content, but with interactive updates.
 
 **Seeing different sets of counters [Future suggestion]**
 
@@ -65,6 +66,112 @@ What did this do? First we installed our diagnostic tool which is called dotnet-
 
 The --profile option could indicate predefined named sets, comma separated lists of counters, or a configuration file that describes
 
+### Ad-hoc Diagnostic queries [Future suggestion]
+
+Instead of counters, we could also view processes, modules, threads, or stacks. For example:
+
+    > dotnet tool install -g dotnet-diag
+    > dotnet diag view stacks
+    'view stacks' requires argument: -p|--process-id <id>
+    Available .Net Core processes:
+
+     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
+    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
+      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
+     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
+    ...
+    
+    > dotnet diag view stacks --process-id 1902
+        Thread ac02:
+          Foo.dll!Foo.DoSomething()
+          Foo.dll!Foo.AnotherMethod()
+          Bar.dll!Bar.DoWork()
+          Bar.dll!Bar.ThreadWorker()
+        Thread b25:
+          WebApp1.dll!PrintStuff()
+          ...
+
+### Capture a trace for offline performance analysis
+
+For analyzing CPU usage, IO, lock contention, allocation rate, etc the investigator wants to capture a performance trace. This trace can then be moved to a developer machine where it can be analyzed with profiling tools such as PerfView or VisualStudio. 
+
+    > dotnet tool install -g dotnet-diag
+    > dotnet diag collect trace
+    'collect trace' requires argument: -p|--process-id <id>
+    Available .Net Core processes:
+
+     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
+    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
+      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
+     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
+    ...
+    
+    > dotnet diag collect trace --process-id 1902
+        Trace file:    ~/trace_1.diagsession
+        Bytes written: 37.8 MB
+
+        's' - stop tracing
+        'g' - capture GC heap snapshot
+
+This captures an EventPipe trace using a default set of events that have modest overhead (~5%) and are suitable for some basic investigations such as CPU usage.
+
+**Launching a process and capturing a trace**
+
+    > dotnet diag collect trace -- /usr/bin/dotnet WebApp1.dll /whatever /webapp --args
+
+**Collecting a non-default set of events**
+
+    > dotnet diag collect trace --process-id 1902 --profile GC
+
+The --profile option allows the user to specify a pre-defined named set of events that is useful for a particular type of investigation. In the future these might be user-extensible.
+
+**Collecting ETW/LTTNG/Perf traces [Future suggestion]**
+
+    > dotnet diag collect etw-trace --process-id 1902
+
+### Do a (dump-based) memory leak analysis
+
+For analyzing managed memory leaks over time, the investigator first wants to capture a series of dumps that will show the memory growth.
+
+    > dotnet tool install -g dotnet-diag
+    > dotnet diag collect dump
+    'collect dump' requires argument: -p|--process-id <id>
+    Available .Net Core processes:
+
+     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
+    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
+      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
+     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
+    ...
+    
+    > dotnet diag collect dump --process-id 1902
+        Dump written to ~/dump.1902_1.dmp
+    
+    ... wait while the memory leak grows
+
+    > dotnet diag collect dump --process-id 1902
+        Dump written to ~/dump.1902_2.dmp
+
+Next the investigator needs to compare the heaps in these two dumps. The 'analyze' verb offers an interactive REPL for exploring the contents of diagnostic artifacts.
+
+    > dotnet diag analyze ~/dump.1902_2.dmp
+    Analyzing ~/dump.1902_2.dmp
+    Type 'help' for help
+    $ HeapDiff ~/dump.1982_1.dmp
+    Showing top GC heap differences by size
+    Type                    Current Heap      Baseline Heap     Delta
+                            Size    / Count   Size    / Count   Size    / Count
+    System.String           1790650 / 7430    1435870 / 6521    +354780 / + 909
+    System.Byte[]             65420 /   26      28432 /    7    + 36988 / +  19
+    WebApp1.RequestEntry       1800 /  180       1200 /  120    +   600 / +  60
+    ...
+    
+    To show all differences use 'heapdiff -all ~/dump.1982_1.dmp'
+    To show objects of a particular type use HeapDump -type <type_name>
+
+    >
+
+INCOMPLETE
 
 ## Open Questions
 
@@ -72,6 +179,10 @@ The --profile option could indicate predefined named sets, comma separated lists
 2. Do we have a smaller tool which is collector only?
 3. Do we support command line response files?
 4. Do we support '/' style args that are more common on windows or only '--' style args?
+5. What default output file names do we want to use?
+6. Do we want the tool be 'dotnet' prefixed or use a separate name?
+7. Do we need a memory comparison command that is more generic than GC heap? For example VMDiff?
+8. Details of feature scoping questions are bleeding over into CLI design (because almost any feature addition gets exposed via CLI). We need to figure out how much CLI design gets specified here vs. how much gets decided later.
 
 
     

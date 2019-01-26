@@ -159,26 +159,64 @@ Next the investigator needs to compare the heaps in these two dumps. The 'analyz
     Type 'help' for help
     $ HeapDiff ~/dump.1982_1.dmp
     Showing top GC heap differences by size
-    Type                    Current Heap      Baseline Heap     Delta
-                            Size    / Count   Size    / Count   Size    / Count
-    System.String           1790650 / 7430    1435870 / 6521    +354780 / + 909
-    System.Byte[]             65420 /   26      28432 /    7    + 36988 / +  19
-    WebApp1.RequestEntry       1800 /  180       1200 /  120    +   600 / +  60
+    Type                       Current Heap     Baseline Heap             Delta
+                               Size / Count      Size / Count      Size / Count
+    System.String           1790650 /  7430   1435870 /  6521   +354780 / + 909
+    System.Byte[]             65420 /    26     28432 /     7   + 36988 / +  19
+    WebApp1.RequestEntry       1800 /   180      1200 /   120   +   600 / +  60
     ...
     
     To show all differences use 'heapdiff -all ~/dump.1982_1.dmp'
-    To show objects of a particular type use HeapDump -type <type_name>
+    To show objects of a particular type use DumpHeap -type <type_name>
 
-    >
+    >DumpHeap -type System.String
+      Address       MT     Size
+     03b51454 725ef698       84     
+     03b522d4 725ef698       52     
+     03b52328 725ef698       16     
+     03b52338 725ef698       28  
+     32cac458 7214b44c       48     
+     32cac504 725eeb40       56     
+     32cac620 725eeb40       94     
+     32cac6c4 725eeb40       74  
+     ...
 
-INCOMPLETE
+    >GCRoot 03b51454
+     Thread 41a0:
+         0ad2f274 55f99590 DomainNeutralILStubClass.IL_STUB_PInvoke(System.Windows.Interop.MSG ByRef, System.Runtime.InteropServices.HandleRef, Int32, Int32)
+             ebp-c: 0ad2f2b0
+                 ->  041095f8 System.Windows.Threading.Dispatcher
+                 ...
+                 ->  03b512f8 System.AppDomain
+                 ->  03b513d0 System.AppDomainSetup
+                 ->  03b51454 System.String
+
+     Found 1 unique roots (run 'GCRoot -all' to see all roots).
+
+
+First we compared the leaky dump to the baseline dump to determine which types were growing, then listed addresses of particular instances of the leaking type, then determined the chain of references that was keeping that instance alive. The investigator may need to sample several instances of the leaked type to identify which ones are expected to be on the heap and which are not.
+
+Note: The DumpHeap/GCRoot output is identical to SOS. I'm not convinced this output is ideal for clarity, but I am not proposing we change it at this time.
 
 ## Open Questions
 
 1. Do we want an alternate installation path that doesn't require the SDK?
+
+    Not immediately, but it should probably follow shortly after getting an SDK based option in place. I believe we could create a self-contained application called dotnet-diag, distributed via wget from a set of platform specific Microsoft download links.
+
 2. Do we have a smaller tool which is collector only?
+
+    Not right now at least. The main benefit of a stand-alone collector would be a smaller on disk footprint but its not clear the difference would be meaningful enough to justify the extra work right now. We can revisit this in response to customer feedback. In the meantime we should still apply good engineering discipline to keep collector logic segregated from analysis or UI.
+
 3. Do we support command line response files?
+
+    Not at this time. I didn't see any documentation suggesting that dotnet supports the response file generally and it would be nice to follow suit rather than rolling our own. We can revisit this based on customer feedback.
+
 4. Do we support '/' style args that are more common on windows or only '--' style args?
+
+    Not at this time. We should document and parse all arguments accepting only the single dash or double dash form. For example -h or --help are recognized for help, but /help is not. This keeps us identical to the behavior of other dotnet tools.
+    FWIW there might be value in accepting the /arg form of arguments but I'd rather it gets taken up across all dotnet tools or as a generic feature of the command-line parsing library so that we have some degree of standardization. Even if we did start recognizing the /arg form, I still suggest only printing the -/-- forms in the help to prevent clutter.
+
 5. What default output file names do we want to use?
 6. Do we want the tool be 'dotnet' prefixed or use a separate name?
 7. Do we need a memory comparison command that is more generic than GC heap? For example VMDiff?
@@ -514,6 +552,8 @@ WPR uses the WPR -<verb\> [options] convention.
          -disablepagingexecutive}
 
 
+WPR does not support a default file name for saving, the filename must be explicitly provided.
+
 ### Perfview
 
 Perfview is CLI or GUI tool that allows collecting, analyzing and viewing ETW traces. 
@@ -544,6 +584,8 @@ PerfView uses the PerfView <verb/> [options] CLI convention:
 
 
 PerfView has some commands that manipulate an ongoing trace without keeping the PerfView process running (example: start/stop/mark/abort), other commands that capture traces synchronously (example: collect/run), and then further commands that manipulate or view trace data that is already on disk.
+
+When no filename is specified, PerfView saves trace data as PerfViewData.etl[.zip]
 
 ### ProcDump
 
@@ -616,6 +658,14 @@ ProcDump uses CLI convention: ProcDump [options]
 	By default ProcDump will capture a 32-bit dump of a 32-bit process when running on 64-bit Windows. This option overrides to create a 64-bit dump. Only use for WOW64 subsystem debugging.
 	-?
 	Use -? -e to see example command lines.
+
+
+When creating dumps, procdump uses a default output format of PROCESSNAME\_YYMMDD\_HHMMSS.dmp
+where:
+
+    PROCESSNAME = Process Name
+    YYMMDD = Year/Month/Day
+    HHMMSS = Hour/Minute/Second
 
 ### Perfmon
 

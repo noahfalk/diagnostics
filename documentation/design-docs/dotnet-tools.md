@@ -198,15 +198,15 @@ First we compared the leaky dump to the baseline dump to determine which types w
 
 Note: The DumpHeap/GCRoot output is identical to SOS. I'm not convinced this output is ideal for clarity, but I am not proposing we change it at this time.
 
-## Open Questions
+## Q & A
 
 1. Do we want an alternate installation path that doesn't require the SDK?
 
-    Not immediately, but it should probably follow shortly after getting an SDK based option in place. I believe we could create a self-contained application called dotnet-diag, distributed via wget from a set of platform specific Microsoft download links.
+    Not immediately, but it should probably follow shortly after getting an SDK based option in place. There are several alternate installation options customers might want for more production oriented scenarios such as FDD and self-contained apps available as network downloads, or docker images that are pre-provisioned with the tools. We'll likely need customer feedback to prioritize.
 
 2. Do we have a smaller tool which is collector only?
 
-    Not right now at least. The main benefit of a stand-alone collector would be a smaller on disk footprint but its not clear the difference would be meaningful enough to justify the extra work right now. We can revisit this in response to customer feedback. In the meantime we should still apply good engineering discipline to keep collector logic segregated from analysis or UI.
+    Not right now at least. The main benefit of a stand-alone collector would be a smaller on disk footprint but its not clear the difference would be meaningful enough to justify the extra work right now. We can revisit this in response to customer feedback. In the meantime we should still apply good engineering discipline to keep collector logic segregated from analysis or UI so that we have a path to achieve this in the future when needed.
 
 3. Do we support command line response files?
 
@@ -218,7 +218,15 @@ Note: The DumpHeap/GCRoot output is identical to SOS. I'm not convinced this out
     FWIW there might be value in accepting the /arg form of arguments but I'd rather it gets taken up across all dotnet tools or as a generic feature of the command-line parsing library so that we have some degree of standardization. Even if we did start recognizing the /arg form, I still suggest only printing the -/-- forms in the help to prevent clutter.
 
 5. What default output file names do we want to use?
+
+    For traces we should use traceNNNN.extension where NNNN is a 4 digit decimal counter (for example trace0001.etl or trace2195.netperf). For dumps we should use dumpNNNN.extension, and for packaged aggregates of data we should use 'diag-data'
+
+    Rationale: Firstly should we have a default at all? The fewer required parameters there are, the more likely a user can guess a valid command line, the more efficiently the command line can be typed/shown, and the more standardized overall usage is likely to be. Users who don't like the default can always specify an alternate value. Among the tools that have default values I've seen these two patterns: use a fixed name always (perf/PerfView) or use a time varying name (ProcDump). In the case that the diagnostic data will be used immediately after collection, the investigator knows the context and doesn't need to distinguish with a timestamp. Avoiding a timestamp makes the output file name predictable for use in subsequent commands. It also helps to automatically overwrite past data if the investigator is making multiple attempts to get a useful collection. In the case that the investigator needs to persist the data for a period of time before analysis, make multiple collections, or hand off the data to a second investigator, the timestamp is unlikely to be a good enough distinguishing label to understand what each collection represented. If the investigator specifices a name explicitly the default is moot, but if they collect first and then rename it is easier when the default file name is easily predictable.
+
 6. Do we want the tool be 'dotnet' prefixed or use a separate name?
+
+    We'll use the dotnet prefix. Although eliminating the dotnet prefix could offer a slighly smaller name, such as 'dndiag' it appears to confusing to have one tool abbreviate dotnet as dn when no other tools do this. If dotnet diagnostics had some other small distinct name to use that could be an option, but I am not aware of any. 'Visual Studio' could have the right diagnostic tooling connotations but it tends to imply broader reach than just .
+
 7. Do we need a memory comparison command that is more generic than GC heap? For example VMDiff?
 8. Details of feature scoping questions are bleeding over into CLI design (because almost any feature addition gets exposed via CLI). We need to figure out how much CLI design gets specified here vs. how much gets decided later.
 

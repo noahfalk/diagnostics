@@ -1,10 +1,8 @@
 #Dotnet Diagnostic Tools CLI Design
 
-
-
 # User workflows
 
-These are canonical examples of the work we'd expect a .Net developer to want to do, and the command line syntax to accomplish that task. The goal is for the steps to be clear, easily discoverable, and unsurprising given the developer's knowledge about the concepts and related tools. Some of the scenarios are marked [Future suggestion] to indicate we have no intention of building such a feature now, but it demonstrates that the CLI design could be reasonably extended.
+These are some quick examples of the work we'd expect a .Net developer to want to do. The goal is for the steps to be clear, easily discoverable, and unsurprising given the developer's knowledge about the concepts and related tools.
 
 All of the examples below have the following common setup:
 
@@ -17,147 +15,122 @@ All of the examples below have the following common setup:
 
 ### Ad-hoc Health Monitoring / 1st Level Performance Triage
 
-The investigator wants to get a high level understanding about how the application is performing. This could be proactive investigation during development, or it could be reacting to testing/user feedback for the application in production. The investigator wants to look at a set of common performance counters printed to the console.
+**Seeing a snapshot of counter data from a running process**
 
-    > dotnet tool install -g dotnet-diag
-    > dotnet diag view stats
-    'view stats' requires argument: -p|--process-id <id>
-    Available .Net Core processes:
-
-     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
-    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
-      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
-     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
-    ...
-    
-    > dotnet diag view stats --process-id 1902
-          ASP.Net Requests/sec       1915
-          ASP.Net Latency (ms)         34   
+    > dotnet tool install -g dotnet-counters
+      You can invoke the tool using the following command: dotnet-counters
+      Tool 'dotnet-counters' (version '1.0.0') was successfully installed.
+    > dotnet counters view --process-id 1902 process,runtime,aspnet
+      Process: 
           CPU (%)                    78.2
           Virtual Memory (MB)        1200
-          GC Heap (MB)                784
           Threads                      23
+      Runtime:
+          GC Heap (MB)                784
           Threadpool queue length     114
           Exceptions/sec              1.3
-          ...
+       ASP.Net:
+          Requests/sec               1915
+          Latency (ms)                 34  
           
 
-What did this do? First we installed our diagnostic tool which is called dotnet-diag using the standard global tools installer. Then we ran the 'view stats' command but forgot to specify a process. The command helpfully indicated the parameter was required and displayed a list of running processes that have a .Net Core runtime loaded. Last we ran the 'view stats' command again with a process id which shows a point in time snapshot of the performance statistics. The exact counters to display are TBD, but assume that the list is context sensitive based on the assemblies loaded in the process. 
+(Counter groups are for example purpose only, exact groups/counters TBD)
 
 **Seeing values that refresh periodically in-place**
 
-    > dotnet diag monitor stats --processId <id>
-          ASP.Net Requests/sec       1915
-          ASP.Net Latency (ms)         34   
+    > dotnet counters monitor --processId 1902 process,runtime,aspnet
+      Process: 
           CPU (%)                    78.2
           Virtual Memory (MB)        1200
-          GC Heap (MB)                784
           Threads                      23
+      Runtime:
+          GC Heap (MB)                784
           Threadpool queue length     114
           Exceptions/sec              1.3
+       ASP.Net:
+          Requests/sec               1915
+          Latency (ms)                 34  
        
-      'p' to pause updates, 'r' to resume updates, 'q' to quit
+      'p' - pause updates
+      'r' - resume updates
+      'q' - quit
 
-Switching from the 'view' verb to 'monitor' verb shows similar content, but with interactive updates.
-
-**Seeing different sets of counters [Future suggestion]**
-
-    > dotnet diag view stats --processId <id> --profile runtime
-
-The --profile option could indicate predefined named sets, comma separated lists of counters, or a configuration file that describes
-
-### Ad-hoc Diagnostic queries [Future suggestion]
-
-Instead of counters, we could also view processes, modules, threads, or stacks. For example:
-
-    > dotnet tool install -g dotnet-diag
-    > dotnet diag view stacks
-    'view stacks' requires argument: -p|--process-id <id>
-    Available .Net Core processes:
-
-     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
-    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
-      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
-     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
-    ...
-    
-    > dotnet diag view stacks --process-id 1902
-        Thread ac02:
-          Foo.dll!Foo.DoSomething()
-          Foo.dll!Foo.AnotherMethod()
-          Bar.dll!Bar.DoWork()
-          Bar.dll!Bar.ThreadWorker()
-        Thread b25:
-          WebApp1.dll!PrintStuff()
-          ...
 
 ### Capture a trace for offline performance analysis
 
-For analyzing CPU usage, IO, lock contention, allocation rate, etc the investigator wants to capture a performance trace. This trace can then be moved to a developer machine where it can be analyzed with profiling tools such as PerfView or VisualStudio. 
+For analyzing CPU usage, IO, lock contention, allocation rate, etc the investigator wants to capture a performance trace. This trace can then be moved to a developer machine where it can be analyzed with profiling tools such as PerfView/VisualStudio or visualized as a flame graph with speedscope. 
 
-    > dotnet tool install -g dotnet-diag
-    > dotnet diag collect trace
-    'collect trace' requires argument: -p|--process-id <id>
-    Available .Net Core processes:
+**Capture default trace**
 
-     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
-    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
-      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
-     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
-    ...
-    
-    > dotnet diag collect trace --process-id 1902
-        Trace file:    ~/trace_1.diagsession
-        Bytes written: 37.8 MB
+    > dotnet tool install -g dotnet-trace
+      You can invoke the tool using the following command: dotnet-trace
+      Tool 'dotnet-trace' (version '1.0.0') was successfully installed.
+    > dotnet trace collect --process-id 1902
+        Recording trace 38MB  
 
         's' - stop tracing
         'g' - capture GC heap snapshot
 
+Later...
+
+    > dotnet trace collect --process-id 1902
+        Recording trace 107MB
+        Recording complete (process exited)
+        Zipping...
+        Trace complete: ~/trace.netperf.zip
+
+
 This captures an EventPipe trace using a default set of events that have modest overhead (~5%) and are suitable for some basic investigations such as CPU usage.
 
-**Launching a process and capturing a trace**
+**Capture a trace for particular type of investigation**
 
-    > dotnet diag collect trace -- /usr/bin/dotnet WebApp1.dll /whatever /webapp --args
+    > dotnet trace collect --process-id 1902 --profile gc-triage
+        Recording trace 38MB 
 
-**Collecting a non-default set of events**
+        's' - stop tracing
+        'g' - capture GC heap snapshot
 
-    > dotnet diag collect trace --process-id 1902 --profile GC
+The --profile option configures some pre-defined sets of providers and keywords
 
-The --profile option allows the user to specify a pre-defined named set of events that is useful for a particular type of investigation. In the future these might be user-extensible.
+**Capture a trace of a particular executable**
 
-**Collecting ETW/LTTNG/Perf traces [Future suggestion]**
+    > dotnet trace run -- /usr/bin/dotnet exec ~/my-app/bin/release/netcoreapp2.2/my-app.dll -some -args
+        Hello from my app
+        app does stuff
+        ...
+        Recording complete (process exited with code 0)
+        Zipping...
+        Trace complete: ~/trace.netperf.zip
 
-    > dotnet diag collect etw-trace --process-id 1902
+**Convert a trace to use with speedscope**
+
+    > dotnet trace convert --format:speedscope ~/trace.netperf
+        Writing:       ~/trace.speedscope.json
+        Conversion complete
 
 ### Do a (dump-based) memory leak analysis
 
 For analyzing managed memory leaks over time, the investigator first wants to capture a series of dumps that will show the memory growth.
 
-    > dotnet tool install -g dotnet-diag
-    > dotnet diag collect dump
-    'collect dump' requires argument: -p|--process-id <id>
-    Available .Net Core processes:
-
-     PID  %CPU  %MEM     TIME  COMMAND           ENTRYPOINT
-    1902  78.0   6.0  0:02:19  /usr/bin/dotnet   WebApp1.MyApp.Main
-      74   3.1   1.2  0:19:28  /usr/bin/dotnet   WebApp1.CacheService.Main
-     142   0.1   3.4  1:04:54  /usr/bin/dotnet   Contuso.DiskWatchdog.Main
-    ...
+    > dotnet tool install -g dotnet-dump
+      You can invoke the tool using the following command: dotnet-dump
+      Tool 'dotnet-dump' (version '1.0.0') was successfully installed.
+    > dotnet dump --process-id 1902 --number 2
+        Writing: ~/dump0001.dmp
     
-    > dotnet diag collect dump --process-id 1902
-        Dump written to ~/dump.1902_1.dmp
-    
-    ... wait while the memory leak grows
+... 10 seconds pass (the default time interval)
 
-    > dotnet diag collect dump --process-id 1902
-        Dump written to ~/dump.1902_2.dmp
+    > dotnet dump --process-id 1902 --number 2
+        Writing: ~/dump0001.dmp
+        Writing: ~/dump0002.dmp
+        Complete
 
 Next the investigator needs to compare the heaps in these two dumps. The 'analyze' verb offers an interactive REPL for exploring the contents of diagnostic artifacts.
 
-    > dotnet diag analyze ~/dump.1902_2.dmp
-    Analyzing ~/dump.1902_2.dmp
+    > dotnet dump analyze ~/dump0002.dmp
+    Analyzing ~/dump0002.dmp
     Type 'help' for help
-    $ HeapDiff ~/dump.1982_1.dmp
+    $ HeapDiff ~/dump0001.dmp
     Showing top GC heap differences by size
     Type                       Current Heap     Baseline Heap             Delta
                                Size / Count      Size / Count      Size / Count
@@ -166,7 +139,7 @@ Next the investigator needs to compare the heaps in these two dumps. The 'analyz
     WebApp1.RequestEntry       1800 /   180      1200 /   120   +   600 / +  60
     ...
     
-    To show all differences use 'heapdiff -all ~/dump.1982_1.dmp'
+    To show all differences use 'HeapDiff -all ~/dump0001.dmp'
     To show objects of a particular type use DumpHeap -type <type_name>
 
     >DumpHeap -type System.String
@@ -198,37 +171,57 @@ First we compared the leaky dump to the baseline dump to determine which types w
 
 Note: The DumpHeap/GCRoot output is identical to SOS. I'm not convinced this output is ideal for clarity, but I am not proposing we change it at this time.
 
+### Install SOS for use with LLDB
+
+    > dotnet tool install -g dotnet-sos
+      You can invoke the tool using the following command: dotnet-sos
+      Tool 'dotnet-sos' (version '1.0.0') was successfully installed.
+    > dotnet sos install
+      Installing SOS plugin at ~/.dotnet/sos
+      Updating .lldbinit - LLDB will load SOS automatically at startup
+      Complete
+
 ## Q & A
 
 1. Do we want an alternate installation path that doesn't require the SDK?
 
     Not immediately, but it should probably follow shortly after getting an SDK based option in place. There are several alternate installation options customers might want for more production oriented scenarios such as FDD and self-contained apps available as network downloads, or docker images that are pre-provisioned with the tools. We'll likely need customer feedback to prioritize.
 
-2. Do we have a smaller tool which is collector only?
+2. Do we want a single multi-purpose tool, or a larger number of narrower purpose tools?
 
-    Not right now at least. The main benefit of a stand-alone collector would be a smaller on disk footprint but its not clear the difference would be meaningful enough to justify the extra work right now. We can revisit this in response to customer feedback. In the meantime we should still apply good engineering discipline to keep collector logic segregated from analysis or UI so that we have a path to achieve this in the future when needed.
+    Narrow purpose tools. 
 
-3. Do we support command line response files?
+    Rationale: Originally I was leaning towards multi-purpose but there are various reasons this approach was awkward:
+    (a) dotnet's CLI guidance is that the term after dotnet is a 'context', but a multi-purpose tool doesn't make a very useful context. In most cases the verb that would follow needed another sub-context noun to determine the operation. For example 'dotnet diag collect trace' vs. 'dotnet diag collect dump.' Many of the parameters that make sense for a trace don't make sense for a dump and vice-versa so you either end up with workarounds such as a super-set of all possible arguments, arguments that are context sensitive based on earlier arguments, or verbs that are really verb-noun combinations (ie 'collect-dump'). None of these seem to match dotnet conventions.
+    (b) Putting the verbs before the sub-context noun makes it hard to determine what each sub-context supports with help commands. For example dotnet analyze dump\_file would be supported but dotnet analyze trace\_file wouldn't (for now at least).
+    (c) It encourages higher levels of abstraction and consistency than realistically exist. For example 'dotnet collect' was appealing if you imagined defining a collection plan that could have all sorts of triggers and different collected artifacts that ultimately gets zipped up in a nice package. But building that requires substantial additional work over a basic trace or dump collector.
+
+    Multi-purpose tool did have a few advantages we are giving up:
+    (a) Size on disk would have been a little better. Each tool must include the closure of its non-framework dependencies which means if any tools share a dependency (symbol loading for example) there will be multiple copies of that assembly in the global tools install directory
+    (b) A single dotnet install command. We could improving this in dotnet tool install itself, for example by allowing multiple tools to be listed in an install command (similar to many package managers) or supporting a tool meta-package that is just a grouping of related tools.
+
+3. Do we have a stand-alone collector?
+
+4. What binaries/symbols do we collect?
+
+5. What output formats do we use?
+
+6. What default output file names do we want to use?
+
+7. Do we support command line response files?
 
     Not at this time. I didn't see any documentation suggesting that dotnet supports the response file generally and it would be nice to follow suit rather than rolling our own. We can revisit this based on customer feedback.
 
-4. Do we support '/' style args that are more common on windows or only '--' style args?
+8. Do we support '/' style args that are more common on windows or only '--' style args?
 
     Not at this time. We should document and parse all arguments accepting only the single dash or double dash form. For example -h or --help are recognized for help, but /help is not. This keeps us identical to the behavior of other dotnet tools.
     FWIW there might be value in accepting the /arg form of arguments but I'd rather it gets taken up across all dotnet tools or as a generic feature of the command-line parsing library so that we have some degree of standardization. Even if we did start recognizing the /arg form, I still suggest only printing the -/-- forms in the help to prevent clutter.
 
-5. What default output file names do we want to use?
+9. Do we want the tool be 'dotnet' prefixed or use a separate tool name?
 
-    For traces we should use traceNNNN.extension where NNNN is a 4 digit decimal counter (for example trace0001.etl or trace2195.netperf). For dumps we should use dumpNNNN.extension, and for packaged aggregates of data we should use 'diag-data'
+10. Do we need a memory comparison command that is more generic than GC heap? For example VMDiff?
 
-    Rationale: Firstly should we have a default at all? The fewer required parameters there are, the more likely a user can guess a valid command line, the more efficiently the command line can be typed/shown, and the more standardized overall usage is likely to be. Users who don't like the default can always specify an alternate value. Among the tools that have default values I've seen these two patterns: use a fixed name always (perf/PerfView) or use a time varying name (ProcDump). In the case that the diagnostic data will be used immediately after collection, the investigator knows the context and doesn't need to distinguish with a timestamp. Avoiding a timestamp makes the output file name predictable for use in subsequent commands. It also helps to automatically overwrite past data if the investigator is making multiple attempts to get a useful collection. In the case that the investigator needs to persist the data for a period of time before analysis, make multiple collections, or hand off the data to a second investigator, the timestamp is unlikely to be a good enough distinguishing label to understand what each collection represented. If the investigator specifices a name explicitly the default is moot, but if they collect first and then rename it is easier when the default file name is easily predictable.
-
-6. Do we want the tool be 'dotnet' prefixed or use a separate name?
-
-    We'll use the dotnet prefix. Although eliminating the dotnet prefix could offer a slighly smaller name, such as 'dndiag' it appears to confusing to have one tool abbreviate dotnet as dn when no other tools do this. If dotnet diagnostics had some other small distinct name to use that could be an option, but I am not aware of any. 'Visual Studio' could have the right diagnostic tooling connotations but it tends to imply broader reach than just .
-
-7. Do we need a memory comparison command that is more generic than GC heap? For example VMDiff?
-8. Details of feature scoping questions are bleeding over into CLI design (because almost any feature addition gets exposed via CLI). We need to figure out how much CLI design gets specified here vs. how much gets decided later.
+11. Details of feature scoping questions are bleeding over into CLI design (because almost any feature addition gets exposed via CLI). We need to figure out how much CLI design gets specified here vs. how much gets decided later.
 
 
     

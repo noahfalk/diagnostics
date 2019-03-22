@@ -17,26 +17,30 @@ namespace Microsoft.Diagnostic.Repl
 {
     public class CommandProcessor
     {
-        private readonly Parser _parser;
-        private readonly Command _rootCommand;
+        private readonly CommandLineBuilder _rootBuilder = new CommandLineBuilder();
+        private Command _rootCommand;
+        private Parser _parser;
         private readonly Dictionary<Type, object> _services = new Dictionary<Type, object>();
 
         /// <summary>
         /// Create an instance of the command processor;
         /// </summary>
-        /// <param name="assemblies">The list of assemblies to look for commands</param>
-        public CommandProcessor(IEnumerable<Assembly> assemblies)
+        public CommandProcessor()
         {
             _services.Add(typeof(CommandProcessor), this);
-            var rootBuilder = new CommandLineBuilder();
-            rootBuilder.UseHelp()
+            _rootBuilder.UseHelp()
                        .UseParseDirective()
                        .UseSuggestDirective()
                        .UseParseErrorReporting()
                        .UseExceptionHandler();
-            BuildCommands(rootBuilder, assemblies);
-            _rootCommand = rootBuilder.Command;
-            _parser = rootBuilder.Build();
+            BuildCommands();
+
+        }
+
+        private void BuildCommands()
+        {
+            _rootCommand = _rootBuilder.Command;
+            _parser = _rootBuilder.Build();
         }
 
         /// <summary>
@@ -57,6 +61,13 @@ namespace Microsoft.Diagnostic.Repl
         public void AddService(Type type, object instance)
         {
             _services.Add(type, instance);
+        }
+
+        public T GetService<T>()
+        {
+            object service = null;
+            _services.TryGetValue(typeof(T), out service);
+            return (T)service;
         }
 
         /// <summary>
@@ -86,73 +97,88 @@ namespace Microsoft.Diagnostic.Repl
             }
         }
 
-        private void BuildCommands(CommandLineBuilder rootBuilder, IEnumerable<Assembly> assemblies)
+        public void AddCommand(Command command)
         {
-            foreach (Type type in assemblies.SelectMany((assembly) => assembly.GetExportedTypes()))
+            _rootBuilder.AddCommand(command);
+            BuildCommands();
+        }
+
+        public void AddCommandsFromAttributedTypes(Assembly assembly)
+        {
+            foreach (Type type in assembly.GetExportedTypes())
             {
-                Command command = null;
+                AddCommandFromAttributedType(type);
+            }
+            BuildCommands();
+        }
 
-                var baseAttributes = (BaseAttribute[])type.GetCustomAttributes(typeof(BaseAttribute), inherit: false);
-                foreach (BaseAttribute baseAttribute in baseAttributes)
+        private void AddCommandFromAttributedType(Type type)
+        {
+            Command command = null;
+
+            var baseAttributes = (BaseAttribute[])type.GetCustomAttributes(typeof(BaseAttribute), inherit: false);
+            foreach (BaseAttribute baseAttribute in baseAttributes)
+            {
+                if (baseAttribute is CommandAttribute commandAttribute)
                 {
-                    if (baseAttribute is CommandAttribute commandAttribute)
+                    command = new Command(commandAttribute.Name, commandAttribute.Help);
+                    var builder = new CommandLineBuilder(command);
+                    builder.UseHelp();
+
+                    var properties = new List<(PropertyInfo, Option)>();
+                    PropertyInfo argument = null;
+
+                    foreach (PropertyInfo property in type.GetProperties().Where(p => p.CanWrite))
                     {
-                        command = new Command(commandAttribute.Name, commandAttribute.Help);
-                        var builder = new CommandLineBuilder(command);
-                        builder.UseHelp();
-
-                        var properties = new List<(PropertyInfo, Option)>();
-                        PropertyInfo argument = null;
-
-                        foreach (PropertyInfo property in type.GetProperties().Where(p => p.CanWrite))
+                        var argumentAttribute = (ArgumentAttribute)property.GetCustomAttributes(typeof(ArgumentAttribute), inherit: false).SingleOrDefault();
+                        if (argumentAttribute != null)
                         {
-                            var argumentAttribute = (ArgumentAttribute)property.GetCustomAttributes(typeof(ArgumentAttribute), inherit: false).SingleOrDefault();
-                            if (argumentAttribute != null)
+                            if (argument != null)
                             {
-                                if (argument != null) {
-                                    throw new ArgumentException($"More than one ArgumentAttribute in command class: {type.Name}");
+                                throw new ArgumentException($"More than one ArgumentAttribute in command class: {type.Name}");
+                            }
+                            command.Argument = new Argument
+                            {
+                                Name = argumentAttribute.Name ?? property.Name.ToLowerInvariant(),
+                                Description = argumentAttribute.Help,
+                                ArgumentType = property.PropertyType,
+                                Arity = new ArgumentArity(0, int.MaxValue)
+                            };
+                            argument = property;
+                        }
+                        else
+                        {
+                            var optionAttribute = (OptionAttribute)property.GetCustomAttributes(typeof(OptionAttribute), inherit: false).SingleOrDefault();
+                            if (optionAttribute != null)
+                            {
+                                var option = new Option(optionAttribute.Name ?? BuildAlias(property.Name), optionAttribute.Help, new Argument { ArgumentType = property.PropertyType });
+                                command.AddOption(option);
+                                properties.Add((property, option));
+
+                                foreach (var optionAliasAttribute in (OptionAliasAttribute[])property.GetCustomAttributes(typeof(OptionAliasAttribute), inherit: false))
+                                {
+                                    option.AddAlias(optionAliasAttribute.Name);
                                 }
-                                command.Argument = new Argument {
-                                    Name = argumentAttribute.Name ?? property.Name.ToLowerInvariant(),
-                                    Description = argumentAttribute.Help,
-                                    ArgumentType = property.PropertyType,
-                                    Arity = new ArgumentArity(0, int.MaxValue)
-                                };
-                                argument = property;
                             }
                             else
                             {
-                                var optionAttribute = (OptionAttribute)property.GetCustomAttributes(typeof(OptionAttribute), inherit: false).SingleOrDefault();
-                                if (optionAttribute != null)
-                                {
-                                    var option = new Option(optionAttribute.Name ?? BuildAlias(property.Name), optionAttribute.Help, new Argument { ArgumentType = property.PropertyType });
-                                    command.AddOption(option);
-                                    properties.Add((property, option));
-
-                                    foreach (var optionAliasAttribute in (OptionAliasAttribute[])property.GetCustomAttributes(typeof(OptionAliasAttribute), inherit: false))
-                                    {
-                                        option.AddAlias(optionAliasAttribute.Name);
-                                    }
-                                }
-                                else
-                                {
-                                    // If not an option, add as just a settable properties
-                                    properties.Add((property, null));
-                                }
+                                // If not an option, add as just a settable properties
+                                properties.Add((property, null));
                             }
                         }
-
-                        command.Handler = new Handler(this, commandAttribute.AliasExpansion, argument, properties, type);
-                        rootBuilder.AddCommand(command);
                     }
 
-                    if (baseAttribute is CommandAliasAttribute commandAliasAttribute)
+                    command.Handler = new Handler(this, commandAttribute.AliasExpansion, argument, properties, type);
+                    _rootBuilder.AddCommand(command);
+                }
+
+                if (baseAttribute is CommandAliasAttribute commandAliasAttribute)
+                {
+                    if (command == null)
                     {
-                        if (command == null) {
-                            throw new ArgumentException($"No previous CommandAttribute for this CommandAliasAttrbute: {type.Name}");
-                        }
-                        command.AddAlias(commandAliasAttribute.Name);
+                        throw new ArgumentException($"No previous CommandAttribute for this CommandAliasAttrbute: {type.Name}");
                     }
+                    command.AddAlias(commandAliasAttribute.Name);
                 }
             }
         }

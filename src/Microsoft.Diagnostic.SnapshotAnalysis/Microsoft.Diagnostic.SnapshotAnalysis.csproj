@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Description>REPL for analyzing .Net Core process snapshots</Description>
+    <PackageReleaseNotes>$(Description)</PackageReleaseNotes>
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Diagnostic.Repl\Microsoft.Diagnostic.Repl.csproj" />
+    <ProjectReference Include="..\Microsoft.Diagnostic.SnapshotAnalysis.Abstractions\Microsoft.Diagnostic.SnapshotAnalysis.Abstractions.csproj" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="1.0.5" />
+  </ItemGroup>
+
+</Project>

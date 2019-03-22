@@ -4,25 +4,20 @@
 // 
 // --------------------------------------------------------------------
 using Microsoft.Diagnostics.Runtime;
-using SOS;
 using System;
-using System.CommandLine;
 using System.Threading;
 
-namespace Microsoft.Diagnostic.Tools.Dump
+namespace Microsoft.Diagnostic.SnapshotAnalysis.Abstractions
 {
     /// <summary>
     /// The the common context for analyze commands
     /// </summary>
-    public class AnalyzeContext: ISOSHostContext
+    public class AnalyzeContext
     {
-        private readonly IConsole _console;
         private ClrRuntime _runtime;
-        private SOSHost _sosHost;
 
-        public AnalyzeContext(IConsole console, DataTarget target)
+        public AnalyzeContext(DataTarget target)
         {
-            _console = console;
             Target = target;
         }
 
@@ -50,20 +45,6 @@ namespace Microsoft.Diagnostic.Tools.Dump
         }
 
         /// <summary>
-        /// Returns the SOS host instance
-        /// </summary>
-        public SOSHost SOSHost
-        {
-            get 
-            {
-                if (_sosHost == null) {
-                    _sosHost = new SOSHost(Target.DataReader, this);
-                }
-                return _sosHost;
-            }
-        }
-
-        /// <summary>
         /// Delegate to invoke to exit repl
         /// </summary>
         public Action Exit { get; }
@@ -77,14 +58,5 @@ namespace Microsoft.Diagnostic.Tools.Dump
         /// Cancellation token for current command
         /// </summary>
         public CancellationToken CancellationToken { get; set; }
-
-        /// <summary>
-        /// Console write function
-        /// </summary>
-        /// <param name="text"></param>
-        void ISOSHostContext.Write(string text)
-        {
-            _console.Out.Write(text);
-        }
     }
 }

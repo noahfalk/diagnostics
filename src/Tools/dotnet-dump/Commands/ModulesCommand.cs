@@ -1,5 +1,7 @@
 
 using Microsoft.Diagnostic.Repl;
+using Microsoft.Diagnostic.SnapshotAnalysis;
+using Microsoft.Diagnostic.SnapshotAnalysis.Abstractions;
 using Microsoft.Diagnostics.Runtime;
 using System.CommandLine;
 using System.Linq;

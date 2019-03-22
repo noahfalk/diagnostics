@@ -1,5 +1,6 @@
 
 using Microsoft.Diagnostic.Repl;
+using Microsoft.Diagnostic.SnapshotAnalysis.Abstractions;
 using System.CommandLine;
 using System.Threading.Tasks;
 

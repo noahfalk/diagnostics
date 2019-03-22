@@ -1,4 +1,5 @@
 using Microsoft.Diagnostic.Repl;
+using Microsoft.Diagnostic.SnapshotAnalysis;
 using SOS;
 using System;
 using System.CommandLine;
@@ -47,7 +48,7 @@ namespace Microsoft.Diagnostic.Tools.Dump
         [Argument(Name = "arguments", Help = "Arguments to SOS command.")]
         public string[] Arguments { get; set; }
 
-        public AnalyzeContext AnalyzeContext { get; set; }
+        public SOSHostContext SOSHostContext { get; set; }
 
         public override Task InvokeAsync()
         {
@@ -56,7 +57,7 @@ namespace Microsoft.Diagnostic.Tools.Dump
                 if (Arguments.Length > 0) {
                     arguments = string.Concat(Arguments.Select((arg) => arg + " "));
                 }
-                AnalyzeContext.SOSHost.ExecuteCommand(AliasExpansion, arguments);
+                SOSHostContext.SOSHost.ExecuteCommand(AliasExpansion, arguments);
             }
             catch (Exception ex) when (ex is FileNotFoundException || ex is EntryPointNotFoundException || ex is InvalidOperationException) {
                 Console.Error.WriteLine(ex.Message);

@@ -57,8 +57,8 @@ If not specified 'heap' is the default.",
             new Command(
                 "analyze",
                 "Starts an interactive shell with debugging commands to explore a dump",
-                new Option[] { RunCommand() }, argument: DumpPath(),
-                handler: CommandHandler.Create<FileInfo, string[]>(new Analyzer().Analyze));
+                new Option[] { RunCommand(), PluginPath() }, argument: DumpPath(),
+                handler: CommandHandler.Create<FileInfo, string[], string>(new Analyzer().Analyze));
 
         private static Argument DumpPath() =>
             new Argument<FileInfo> {
@@ -70,5 +70,11 @@ If not specified 'heap' is the default.",
                 new[] { "-c", "--command" },
                 "Run the command on start.",
                 new Argument<string[]>() { Name = "command" });
+
+        private static Option PluginPath() =>
+            new Option(
+                new[] { "--plugin-path" },
+                "An analysis plugin to load",
+                new Argument<string>() { Name = "plugin_path" });
     }
 }

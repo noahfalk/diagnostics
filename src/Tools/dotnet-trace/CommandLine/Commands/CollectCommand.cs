@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using Microsoft.Diagnostics.Tools.RuntimeClient;
+using Microsoft.Diagnostics.Tracing;
 using System;
 using System.Collections.Generic;
 using System.CommandLine;
@@ -52,8 +53,8 @@ namespace Microsoft.Diagnostics.Tools.Trace
 
                 if (profile.Length == 0 && providers.Length == 0)
                 {
-                    Console.Out.WriteLine("No profile or providers specified, defaulting to trace profile 'cpu-sampling'");
-                    profile = "cpu-sampling";
+                    Console.Out.WriteLine("No profile or providers specified, defaulting to trace profile 'distributed-tracing'");
+                    profile = "distributed-tracing";
                 }
 
                 Dictionary<string, string> enabledBy = new Dictionary<string, string>();
@@ -121,14 +122,21 @@ namespace Microsoft.Diagnostics.Tools.Trace
                 var shouldExit = new ManualResetEvent(false);
                 var shouldStopAfterDuration = duration != default(TimeSpan);
                 var failed = false;
-                var terminated = false;
-                System.Timers.Timer durationTimer = null;
+                //var terminated = false;
+                //System.Timers.Timer durationTimer = null;
 
                 ct.Register(() => shouldExit.Set());
 
                 ulong sessionId = 0;
                 using (Stream stream = EventPipeClient.CollectTracing(processId, configuration, out sessionId))
-                using (VirtualTerminalMode vTermMode = VirtualTerminalMode.TryEnable())
+                {
+                    EventPipeEventSource source = new EventPipeEventSource(stream);
+                    source.Dynamic.All += Dynamic_All;
+                    source.AllEvents += Source_AllEvents;
+                    source.Process();
+                }
+
+                /*using (VirtualTerminalMode vTermMode = VirtualTerminalMode.TryEnable())
                 {
                     if (sessionId == 0)
                     {
@@ -206,13 +214,30 @@ namespace Microsoft.Diagnostics.Tools.Trace
 
                 if (format != TraceFileFormat.NetTrace)
                     TraceFileFormatConverter.ConvertToFormat(format, output.FullName);
+                */
 
+                await Task.Delay(0); // hush compiler
                 return failed ? ErrorCodes.TracingError : 0;
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[ERROR] {ex.ToString()}");
                 return ErrorCodes.UnknownError;
+            }
+        }
+
+        private static void Source_AllEvents(TraceEvent obj)
+        {
+            //Console.WriteLine(obj);
+
+        }
+
+        private static void Dynamic_All(TraceEvent obj)
+        {
+            Console.WriteLine(obj);
+            foreach (string payloadName in obj.PayloadNames)
+            {
+                Console.WriteLine(payloadName + ":" + obj.PayloadByName(payloadName));
             }
         }
 

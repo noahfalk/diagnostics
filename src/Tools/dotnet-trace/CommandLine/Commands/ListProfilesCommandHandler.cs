@@ -70,6 +70,38 @@ namespace Microsoft.Diagnostics.Tools.Trace
                         eventLevel: EventLevel.Informational),
                 },
                 "Tracks GC collections only at very low overhead."),
+            new Profile(
+                "distributed-tracing",
+                new Provider[]
+                {
+                    new Provider("System.Threading.Tasks.TplEventSource",
+                        keywords: 0x80,
+                        eventLevel: EventLevel.LogAlways),
+                    new Provider(
+                        name: "Microsoft-Diagnostics-DiagnosticSource",
+                        keywords: 0x3,
+                        eventLevel: EventLevel.Verbose,
+                        filterData: "FilterAndPayloadSpecs=\"" +
+                        "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.BeginRequest@Activity1Start:-" +
+                            "httpContext.Request.Method" +
+                            ";httpContext.Request.Host" +
+                            ";httpContext.Request.Path" +
+                            ";httpContext.Request.QueryString" +
+                            ";ActivityId=*Activity.Id" +
+                        "\n" +
+                        "Microsoft.AspNetCore/Microsoft.AspNetCore.Hosting.EndRequest@Activity1Stop:-" +
+                            "httpContext.TraceIdentifier" +
+                            ";httpContext.Response.StatusCode" +
+                            ";ActivityId=*Activity.Id" +
+                            ";ActivityDuration=*Activity.Duration.Ticks" +
+                            ";ActivityOperationName=*Activity.OperationName" +
+                            ";ActivityParentId=*Activity.ParentId" +
+                            ";ActivityTags=*Activity.Tags.*Enumerate" +
+                            ";ActivityTraceStateString=*Activity.TraceStateString" +
+                        "\""
+                        )
+                },
+                "Demo of distributed tracing data")
         };
     }
 }

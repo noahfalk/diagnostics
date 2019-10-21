@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+    <RootNamespace>Microsoft.Diagnostics.Tools.DTracer</RootNamespace>
+    <ToolCommandName>dotnet-dtracer</ToolCommandName>
+    <Description>.NET Core Performance Distrubuted Trace Demo</Description>
+    <PackageTags>Diagnostic</PackageTags>
+    <PackageReleaseNotes>$(Description)</PackageReleaseNotes>
+    <PackagedShimOutputRootDirectory>$(OutputPath)</PackagedShimOutputRootDirectory>
+    <SignAssembly>false</SignAssembly>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\PerfView\src\TraceEvent\TraceEvent.csproj" />
+    <ProjectReference Include="..\..\Microsoft.Diagnostics.Tools.RuntimeClient\Microsoft.Diagnostics.Tools.RuntimeClient.csproj" />
+  </ItemGroup>
+
+</Project>

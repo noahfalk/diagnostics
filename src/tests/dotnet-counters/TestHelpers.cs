@@ -5,7 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using Microsoft.Diagnostics.Monitoring;
 using Microsoft.Diagnostics.Tools.Counters;
 
 namespace DotnetCounters.UnitTests
@@ -22,7 +22,7 @@ namespace DotnetCounters.UnitTests
         {
             if (isIncrementingCounter)
             {
-                Dictionary<string, object> payloadFields = new Dictionary<string, object>()
+                IDictionary<string, object> payloadFields = new Dictionary<string, object>()
                 {
                     { "Name", counterName },
                     { "Increment", counterValue },

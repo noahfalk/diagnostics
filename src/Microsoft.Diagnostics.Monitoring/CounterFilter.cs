@@ -6,9 +6,9 @@ using System;
 using System.Collections.Generic;
 
 
-namespace Microsoft.Diagnostics.Tools.Counters
+namespace Microsoft.Diagnostics.Monitoring
 {
-    public class CounterFilter
+    internal class CounterFilter
     {
         private List<string> enabledProviders;
         private Dictionary<string, List<string>> enabledCounters;

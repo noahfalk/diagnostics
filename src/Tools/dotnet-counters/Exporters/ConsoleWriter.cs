@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using Microsoft.Diagnostics.Monitoring;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,7 +13,7 @@ namespace Microsoft.Diagnostics.Tools.Counters.Exporters
     /// ConsoleWriter is an implementation of ICounterRenderer for rendering the counter values in real-time
     /// to the console. This is the renderer for the `dotnet-counters monitor` command.
     /// </summary>
-    public class ConsoleWriter : ICounterRenderer
+    public class ConsoleWriter : IEventPipeCounterPipelineOutput
     {
         /// <summary>Information about an observed provider.</summary>
         private class ObservedProvider
@@ -45,14 +46,10 @@ namespace Microsoft.Diagnostics.Tools.Counters.Exporters
         private bool paused = false;
         private bool initialized = false;
 
-        public void Initialize()
+        public void PipelineStarted()
         {
+            paused = false;
             AssignRowsAndInitializeDisplay();
-        }
-
-        public void EventPipeSourceConnected()
-        {
-            // Do nothing
         }
 
         private void UpdateStatus()
@@ -83,28 +80,12 @@ namespace Microsoft.Diagnostics.Tools.Counters.Exporters
             }
         }
 
-        public void ToggleStatus(bool pauseCmdSet)
-        {
-            if (paused == pauseCmdSet)
-            {
-                return;
-            }
-
-            paused = pauseCmdSet;
-            UpdateStatus();
-        }
-
-        public void CounterPayloadReceived(string providerName, ICounterPayload payload, bool pauseCmdSet)
+        public void CounterPayloadReceived(string providerName, ICounterPayload payload)
         {
             if (!initialized)
             {
                 initialized = true;
                 AssignRowsAndInitializeDisplay();
-            }
-
-            if (pauseCmdSet)
-            {
-                return;
             }
 
             string name = payload.GetName();
@@ -149,9 +130,10 @@ namespace Microsoft.Diagnostics.Tools.Counters.Exporters
             Console.Write($"{new string(' ', prefixSpaces)}{payloadVal}{new string(' ', postfixSpaces)}");
         }
 
-        public void Stop()
+        public void PipelineStopped()
         {
-            // Nothing to do here.
+            paused = true;
+            UpdateStatus();
         }
     }
 }

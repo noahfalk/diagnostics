@@ -18,6 +18,8 @@ namespace Microsoft.Diagnostics.Monitoring
 
         //TODO We can most likely unify trace, cpu, and logs/metrics around one call with the appropriate config
         Task<Stream> StartCpuTrace(int pid, int duration);
+
+        Task<Stream> StartMetricStream(int pid, int durationSeconds);
     }
 
     public enum DumpType

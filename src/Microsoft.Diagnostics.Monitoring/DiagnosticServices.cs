@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.IO.Pipes;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -90,6 +91,39 @@ namespace Microsoft.Diagnostics.Monitoring
 
             return Task.FromResult(session.EventStream);
 
+        }
+
+        public Task<Stream> StartMetricStream(int pid, int durationSeconds)
+        {
+            // I want a writer stream and a reader stream with an in-memory buffer in the middle
+            // but the BCL doesn't seem to have this primitive? There are channels and concurrent
+            // queues but nothing that implements the API for Stream. The closest I can find
+            // is System.IO.Pipes which is close but probably some extra overhead to support its
+            // potential use as an IPC mechanism.
+            AnonymousPipeServerStream writer = new AnonymousPipeServerStream(PipeDirection.Out);
+            Stream readStream = new AnonymousPipeClientStream(writer.GetClientHandleAsString());
+
+            EventPipeCounterPipelineSettings settings = new EventPipeCounterPipelineSettings()
+            {
+                ProcessId = pid,
+                RefreshInterval = TimeSpan.FromSeconds(1),
+                CounterGroups = new EventPipeCounterGroup[]
+                {
+                        new EventPipeCounterGroup() { ProviderName = "System.Runtime" }
+                },
+                Output = new CounterCsvStreamExporter(writer)
+            };
+            EventPipeCounterPipeline pipeline = new EventPipeCounterPipeline(settings);
+
+            Task.Run(async () =>
+            {
+                using(writer)
+                {
+                    await Task.WhenAny(pipeline.RunAsync(), Task.Delay(TimeSpan.FromSeconds(durationSeconds)));
+                    await pipeline.StopAsync(TimeSpan.FromSeconds(1));
+                }
+            });
+            return Task.FromResult(readStream);
         }
 
         private static NETCore.Client.DumpType MapDumpType(DumpType dumpType)

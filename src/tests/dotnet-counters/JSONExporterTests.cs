@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using Xunit;
 using Microsoft.Diagnostics.Tools.Counters.Exporters;
 using Newtonsoft.Json;
+using Microsoft.Diagnostics.Monitoring;
 
 namespace DotnetCounters.UnitTests
 {
@@ -19,17 +20,17 @@ namespace DotnetCounters.UnitTests
         [Fact]
         public void IncrementingCounterTest()
         {
-            string fileName = "IncrementingCounterTest.json";
-            JSONExporter exporter = new JSONExporter(fileName, "myProcess.exe");
-            exporter.Initialize();
+            MemoryStream ms = new MemoryStream();
+            CounterJsonStreamExporter exporter = new CounterJsonStreamExporter(ms, "myProcess.exe");
+            exporter.PipelineStarted();
             for (int i = 0; i < 10; i++)
             {
-                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(true, "incrementingCounterOne", 1.0, 1, "Incrementing Counter One"), false);
+                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(true, "incrementingCounterOne", 1.0, 1, "Incrementing Counter One"));
             }
-            exporter.Stop();
+            exporter.PipelineStopped();
 
-            Assert.True(File.Exists(fileName));
-            using (StreamReader r = new StreamReader(fileName))
+            ms.Position = 0;
+            using (StreamReader r = new StreamReader(ms))
             {
                 string json = r.ReadToEnd();
                 JSONCounterTrace counterTrace = JsonConvert.DeserializeObject<JSONCounterTrace>(json);
@@ -49,17 +50,17 @@ namespace DotnetCounters.UnitTests
         [Fact]
         public void CounterTest()
         {
-            string fileName = "CounterTest.json";
-            JSONExporter exporter = new JSONExporter(fileName, "myProcess.exe");
-            exporter.Initialize();
+            MemoryStream ms = new MemoryStream();
+            CounterJsonStreamExporter exporter = new CounterJsonStreamExporter(ms, "myProcess.exe");
+            exporter.PipelineStarted();
             for (int i = 0; i < 10; i++)
             {
-                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(false, "counterOne", 1.0, 1, "Counter One"), false);
+                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(false, "counterOne", 1.0, 1, "Counter One"));
             }
-            exporter.Stop();
+            exporter.PipelineStopped();
 
-            Assert.True(File.Exists(fileName));
-            using (StreamReader r = new StreamReader(fileName))
+            ms.Position = 0;
+            using (StreamReader r = new StreamReader(ms))
             {
                 string json = r.ReadToEnd();
                 JSONCounterTrace counterTrace = JsonConvert.DeserializeObject<JSONCounterTrace>(json);
@@ -79,17 +80,17 @@ namespace DotnetCounters.UnitTests
         [Fact]
         public void DifferentDisplayRateTest()
         {
-            string fileName = "displayRateTest.json";
-            JSONExporter exporter = new JSONExporter(fileName, "myProcess.exe");
-            exporter.Initialize();
+            MemoryStream ms = new MemoryStream();
+            CounterJsonStreamExporter exporter = new CounterJsonStreamExporter(ms, "myProcess.exe");
+            exporter.PipelineStarted();
             for (int i = 0; i < 10; i++)
             {
-                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(true, "incrementingCounterOne", 1.0, 60, "Incrementing Counter One"), false);
+                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(true, "incrementingCounterOne", 1.0, 60, "Incrementing Counter One"));
             }
-            exporter.Stop();
+            exporter.PipelineStopped();
 
-            Assert.True(File.Exists(fileName));
-            using (StreamReader r = new StreamReader(fileName))
+            ms.Position = 0;
+            using (StreamReader r = new StreamReader(ms))
             {
                 string json = r.ReadToEnd();
                 JSONCounterTrace counterTrace = JsonConvert.DeserializeObject<JSONCounterTrace>(json);
@@ -109,18 +110,18 @@ namespace DotnetCounters.UnitTests
         [Fact]
         public void DisplayUnitsTest()
         {
-            string fileName = "displayUnitsTest.json";
-            JSONExporter exporter = new JSONExporter(fileName, "myProcess.exe");
-            exporter.Initialize();
+            MemoryStream ms = new MemoryStream();
+            CounterJsonStreamExporter exporter = new CounterJsonStreamExporter(ms, "myProcess.exe");
+            exporter.PipelineStarted();
 
             for (int i = 0 ; i < 20; i++)
             {
-                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(false, "heapSize", (double)i, 0, "Heap Size", "MB"), false);
+                exporter.CounterPayloadReceived("myProvider", TestHelpers.GenerateCounterPayload(false, "heapSize", (double)i, 0, "Heap Size", "MB"));
             }
-            exporter.Stop();
+            exporter.PipelineStopped();
 
-            Assert.True(File.Exists(fileName));
-            using (StreamReader r = new StreamReader(fileName))
+            ms.Position = 0;
+            using (StreamReader r = new StreamReader(ms))
             {
                 string json = r.ReadToEnd();
                 JSONCounterTrace counterTrace = JsonConvert.DeserializeObject<JSONCounterTrace>(json);

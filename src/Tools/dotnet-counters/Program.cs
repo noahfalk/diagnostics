@@ -29,7 +29,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 description: "Start monitoring a .NET application")
             {
                 // Handler
-                CommandHandler.Create<CancellationToken, List<string>, IConsole, int, int>(new CounterMonitor().Monitor),
+                CommandHandler.Create<CancellationToken, List<string>, IConsole, int, int>(CounterMonitor.Monitor),
                 // Arguments and Options
                 CounterList(), ProcessIdOption(), RefreshIntervalOption()
             };
@@ -40,7 +40,7 @@ namespace Microsoft.Diagnostics.Tools.Counters
                 description: "Monitor counters in a .NET application and export the result into a file")
             {
                 // Handler
-                HandlerDescriptor.FromDelegate((ExportDelegate)new CounterMonitor().Collect).GetCommandHandler(),
+                HandlerDescriptor.FromDelegate((ExportDelegate)CounterMonitor.Collect).GetCommandHandler(),
                 // Arguments and Options
                 CounterList(), ProcessIdOption(), RefreshIntervalOption(), ExportFormatOption(), ExportFileNameOption()
             };

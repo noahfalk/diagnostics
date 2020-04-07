@@ -21,4 +21,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Microsoft.Diagnostics.NETCore.Client\Microsoft.Diagnostics.NETCore.Client.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DotnetCounters.UnitTests" />
+  </ItemGroup>
 </Project>

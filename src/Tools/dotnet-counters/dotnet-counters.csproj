@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\Microsoft.Diagnostics.Repl\Microsoft.Diagnostics.Repl.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\Microsoft.Diagnostics.NETCore.Client\Microsoft.Diagnostics.NETCore.Client.csproj" />
+    <ProjectReference Include="..\..\Microsoft.Diagnostics.Monitoring\Microsoft.Diagnostics.Monitoring.csproj" />
   </ItemGroup>
 
   <ItemGroup>

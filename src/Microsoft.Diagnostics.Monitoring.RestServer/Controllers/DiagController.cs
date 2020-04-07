@@ -55,6 +55,16 @@ namespace Microsoft.Diagnostics.Monitoring.RestServer.Controllers
             });
         }
 
+        [HttpGet("{pid}/metricstream")]
+        public Task<ActionResult> MetricStream(int pid, [FromQuery]int durationSeconds = 30)
+        {
+            return InvokeService(async () =>
+            {
+                Stream stream = await _diagnosticServices.StartMetricStream(pid, durationSeconds);
+                return File(stream, "application/octet-stream", fileDownloadName: FormattableString.Invariant($"{Guid.NewGuid()}.csv"));
+            });
+        }
+
         private async Task<ActionResult> InvokeService(Func<Task<ActionResult>> serviceCall)
         {
             try

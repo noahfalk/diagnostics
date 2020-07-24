@@ -95,24 +95,23 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
 
         /// <summary>
-        /// Provides connection information when a new runtime instance connects to the server.
+        /// Provides endpoint information when a new runtime instance connects to the server.
         /// </summary>
         /// <param name="token">The token to monitor for cancellation requests.</param>
-        /// <returns>A <see cref="ReversedDiagnosticsConnection"/> that contains information about the new runtime instance connection.</returns>
+        /// <returns>A <see cref="IpcEndpointInfo"/> that contains information about the new runtime instance that connected.</returns>
         /// <remarks>
         /// This will only provide connection information on the first time a runtime connects to the server. Subsequent
-        /// reconects will update the existing <see cref="ReversedDiagnosticsConnection"/> instance. If a connection is removed
+        /// reconects not generate a notification. If a endpoint is removed
         /// using <see cref="RemoveConnection(Guid)"/> and the same runtime instance reconnects afte this call, then a
-        /// new <see cref="ReversedDiagnosticsConnection"/> will be produced.
+        /// new <see cref="IpcEndpointInfo"/> will be produced.
         /// </remarks>
-        public async Task<ReversedDiagnosticsConnection> AcceptAsync(CancellationToken token)
+        public async Task<IpcEndpointInfo> AcceptAsync(CancellationToken token)
         {
             VerifyNotDisposed();
 
             using CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, _cancellation.Token);
 
-            ReversedDiagnosticsConnection newConnection = null;
-            do
+            while(true)
             {
                 Stream stream = null;
                 IpcAdvertise advertise = null;
@@ -155,8 +154,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     int pid = unchecked((int)advertise.ProcessId);
 
                     ProvideStream(runtimeCookie, stream);
-                    // If this runtime instance already exists, update the existing connection with the new endpoint.
-                    // Consumers should hold onto the connection instance and use it for diagnostic communication,
+                    // If this runtime instance is already tracked with an endpoint then skip it.
+                    // Consumers should hold onto the IpcEndpointInfo and use it for diagnostic communication,
                     // regardless of the number of times the same runtime instance connects. This requires consumers
                     // to continuously invoke the AcceptAsync method in order to handle runtime instance reconnects,
                     // even if the consumer only wants to handle a single connection.
@@ -167,14 +166,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
                         endpoint = new ServerIpcEndpoint(runtimeCookie, this);
                         if (_endpoints.TryAdd(runtimeCookie, endpoint))
                         {
-                            newConnection = new ReversedDiagnosticsConnection(this, endpoint, pid, runtimeCookie);
+                            return new IpcEndpointInfo(endpoint, pid, runtimeCookie);
                         }
                     }
                 }
             }
-            while (null == newConnection);
-
-            return newConnection;
         }
 
         /// <summary>

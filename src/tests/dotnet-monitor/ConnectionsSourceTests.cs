@@ -225,13 +225,13 @@ namespace DotnetMonitor.UnitTests
                 _outputHelper = outputHelper;
             }
 
-            internal override void OnNewConnection(ReversedDiagnosticsConnection connection)
+            internal override void OnNewConnection(IpcEndpointInfo connection)
             {
                 _outputHelper.WriteLine($"Added connection to collection: {connection.ToTestString()}");
                 NewConnection(this, EventArgs.Empty);
             }
 
-            internal override void OnRemovedConnection(ReversedDiagnosticsConnection connection)
+            internal override void OnRemovedConnection(IpcEndpointInfo connection)
             {
                 _outputHelper.WriteLine($"Removed connection from collection: {connection.ToTestString()}");
             }

@@ -25,7 +25,7 @@ namespace Microsoft.Diagnostics.Monitoring
         private static readonly TimeSpan ResumeRuntimeTimeout = TimeSpan.FromMilliseconds(250);
 
         private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
-        private readonly IList<ReversedDiagnosticsConnection> _connections = new List<ReversedDiagnosticsConnection>();
+        private readonly IList<IpcEndpointInfo> _connections = new List<IpcEndpointInfo>();
         private readonly SemaphoreSlim _connectionsSemaphore = new SemaphoreSlim(1);
         private readonly string _transportPath;
 
@@ -115,7 +115,7 @@ namespace Microsoft.Diagnostics.Monitoring
                 var connections = _connections.ToList();
 
                 var pruneTasks = new List<Task>();
-                foreach (ReversedDiagnosticsConnection connection in connections)
+                foreach (IpcEndpointInfo connection in connections)
                 {
                     pruneTasks.Add(Task.Run(() => PruneConnectionIfNotViable(connection, linkedToken), linkedToken));
                 }
@@ -130,7 +130,7 @@ namespace Microsoft.Diagnostics.Monitoring
             }
         }
 
-        private async Task PruneConnectionIfNotViable(ReversedDiagnosticsConnection connection, CancellationToken token)
+        private async Task PruneConnectionIfNotViable(IpcEndpointInfo connection, CancellationToken token)
         {
             using var timeoutSource = new CancellationTokenSource();
             using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutSource.Token);
@@ -148,11 +148,8 @@ namespace Microsoft.Diagnostics.Monitoring
                 if (!token.IsCancellationRequested)
                 {
                     _connections.Remove(connection);
-
                     OnRemovedConnection(connection);
-
-                    // Dispose the connection to release the tracking resources in the reversed server.
-                    connection.Dispose();
+                    _server.RemoveConnection(connection.RuntimeInstanceCookie);
                 }
             }
         }
@@ -171,7 +168,7 @@ namespace Microsoft.Diagnostics.Monitoring
             {
                 try
                 {
-                    ReversedDiagnosticsConnection connection = await _server.AcceptAsync(token);
+                    IpcEndpointInfo connection = await _server.AcceptAsync(token);
 
                     _ = Task.Run(() => ResumeAndQueueConnection(connection, token), token);
                 }
@@ -181,7 +178,7 @@ namespace Microsoft.Diagnostics.Monitoring
             }
         }
 
-        private async Task ResumeAndQueueConnection(ReversedDiagnosticsConnection connection, CancellationToken token)
+        private async Task ResumeAndQueueConnection(IpcEndpointInfo connection, CancellationToken token)
         {
             try
             {
@@ -223,18 +220,18 @@ namespace Microsoft.Diagnostics.Monitoring
             }
             catch (Exception)
             {
-                // If any exceptions occur, dispose the connection so that it is removed from the server.
-                connection.Dispose();
+                // If any exceptions occur remove the connection from the server
+                _server.RemoveConnection(connection.RuntimeInstanceCookie);
 
                 throw;
             }
         }
 
-        internal virtual void OnNewConnection(ReversedDiagnosticsConnection connection)
+        internal virtual void OnNewConnection(IpcEndpointInfo connection)
         {
         }
 
-        internal virtual void OnRemovedConnection(ReversedDiagnosticsConnection connection)
+        internal virtual void OnRemovedConnection(IpcEndpointInfo connection)
         {
         }
 
@@ -248,9 +245,9 @@ namespace Microsoft.Diagnostics.Monitoring
 
         private class DiagnosticsConnection : IDiagnosticsConnection
         {
-            private readonly ReversedDiagnosticsConnection _connection;
+            private readonly IpcEndpointInfo _connection;
 
-            public DiagnosticsConnection(ReversedDiagnosticsConnection connection)
+            public DiagnosticsConnection(IpcEndpointInfo connection)
             {
                 _connection = connection;
             }

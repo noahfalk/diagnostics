@@ -25,7 +25,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
 
         /// <summary>
-        /// Tests that server and connections should throw ObjectDisposedException
+        /// Tests that server should throw ObjectDisposedException
         /// from API surface after being disposed.
         /// </summary>
         [Fact]
@@ -34,7 +34,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             var server = StartReversedServer(out string transportName);
             await using var accepter = new ConnectionAccepter(server, _outputHelper);
 
-            ReversedDiagnosticsConnection connection;
+            IpcEndpointInfo connection;
             TestRunner runner = null;
             try
             {
@@ -54,18 +54,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
             await Task.Delay(TimeSpan.FromSeconds(1));
 
             await VerifyConnection(runner, connection, expectAvailableConnection: false);
-
-            // Validate connection surface throws after disposal
-            connection?.Dispose();
-
-            Assert.Throws<ObjectDisposedException>(
-                () => connection.Endpoint);
-
-            Assert.Throws<ObjectDisposedException>(
-                () => connection.ProcessId);
-
-            Assert.Throws<ObjectDisposedException>(
-                () => connection.RuntimeInstanceCookie);
 
             // Validate server surface throws after disposal
             server.Dispose();
@@ -125,7 +113,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             await using var accepter = new ConnectionAccepter(server, _outputHelper);
 
             TestRunner runner = null;
-            ReversedDiagnosticsConnection connection = null;
+            IpcEndpointInfo connection;
             try
             {
                 // Start client pointing to diagnostics server
@@ -152,7 +140,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             // Process exited so the endpoint should not have a valid transport anymore.
             await VerifyWaitForConnection(connection, expectAvailableConnection: false);
 
-            connection?.Dispose();
+            server.RemoveConnection(connection.RuntimeInstanceCookie);
 
             // There should not be any more available connections
             await VerifyNoMoreConnections(accepter);
@@ -169,7 +157,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             TestRunner runner = null;
             DiagnosticsClient client = null;
-            ReversedDiagnosticsConnection connection = null;
+            IpcEndpointInfo connection;
             try
             {
                 // Start client pointing to diagnostics server
@@ -201,7 +189,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             // Process exited so the endpoint should not have a valid transport anymore.
             await VerifyWaitForConnection(client, expectConnection: false);
 
-            connection?.Dispose();
+            server.RemoveConnection(connection.RuntimeInstanceCookie);
 
             // There should not be any more available connections
             await VerifyNoMoreConnections(accepter);
@@ -217,8 +205,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
             using var server = StartReversedServer(out string transportName);
             await using var accepter = new ConnectionAccepter(server, _outputHelper);
 
-            ReversedDiagnosticsConnection connection1 = null;
-            ReversedDiagnosticsConnection connection2 = null;
+            IpcEndpointInfo connection1;
+            IpcEndpointInfo connection2;
             TestRunner runner1 = null;
             TestRunner runner2 = null;
             try
@@ -264,8 +252,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
             await VerifyWaitForConnection(connection1, expectAvailableConnection: false);
             await VerifyWaitForConnection(connection2, expectAvailableConnection: false);
 
-            connection1?.Dispose();
-            connection2?.Dispose();
+            server.RemoveConnection(connection1.RuntimeInstanceCookie);
+            server.RemoveConnection(connection2.RuntimeInstanceCookie);
 
             // There should not be any more available connections
             await VerifyNoMoreConnections(accepter);
@@ -278,7 +266,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return new ReversedDiagnosticsServer(transportName);
         }
 
-        private async Task<ReversedDiagnosticsConnection> AcceptAsync(ConnectionAccepter accepter)
+        private async Task<IpcEndpointInfo> AcceptAsync(ConnectionAccepter accepter)
         {
             using (var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(3)))
             {
@@ -311,7 +299,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             }
         }
 
-        private async Task VerifyWaitForConnection(ReversedDiagnosticsConnection connection, bool expectAvailableConnection = true)
+        private async Task VerifyWaitForConnection(IpcEndpointInfo connection, bool expectAvailableConnection = true)
         {
             using var connectionCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             if (expectAvailableConnection)
@@ -344,11 +332,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <summary>
         /// Verifies basic information on the connection and that it matches the target process from the runner.
         /// </summary>
-        private async Task VerifyConnection(TestRunner runner, ReversedDiagnosticsConnection connection, bool expectAvailableConnection = true)
+        private async Task VerifyConnection(TestRunner runner, IpcEndpointInfo connection, bool expectAvailableConnection = true)
         {
             _outputHelper.WriteLine($"Verifying connection information for process ID {runner.Pid}.");
             Assert.NotNull(runner);
-            Assert.NotNull(connection);
             Assert.Equal(runner.Pid, connection.ProcessId);
             Assert.NotEqual(Guid.Empty, connection.RuntimeInstanceCookie);
             Assert.NotNull(connection.Endpoint);
@@ -358,7 +345,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             _outputHelper.WriteLine($"Connection: {connection.ToTestString()}");
         }
 
-        private void ResumeRuntime(ReversedDiagnosticsConnection connection, DiagnosticsClient client)
+        private void ResumeRuntime(IpcEndpointInfo connection, DiagnosticsClient client)
         {
             _outputHelper.WriteLine($"{connection.RuntimeInstanceCookie}: Resuming runtime instance.");
             try
@@ -376,7 +363,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <summary>
         /// Verifies that a client can handle multiple operations simultaneously.
         /// </summary>
-        private async Task VerifyMultipleSessions(ReversedDiagnosticsConnection connection)
+        private async Task VerifyMultipleSessions(IpcEndpointInfo connection)
         {
             var client = new DiagnosticsClient(connection.Endpoint);
 
@@ -418,7 +405,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <summary>
         /// Verifies that an event stream does provide events.
         /// </summary>
-        private async Task VerifyEventStreamProvidesEventsAsync(ReversedDiagnosticsConnection connection, EventPipeSession session, int sessionNumber)
+        private async Task VerifyEventStreamProvidesEventsAsync(IpcEndpointInfo connection, EventPipeSession session, int sessionNumber)
         {
             Assert.NotNull(session);
             Assert.NotNull(session.EventStream);
@@ -468,7 +455,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private class ConnectionAccepter : IAsyncDisposable
         {
             private readonly CancellationTokenSource _cancellation = new CancellationTokenSource();
-            private readonly Queue<ReversedDiagnosticsConnection> _connections = new Queue<ReversedDiagnosticsConnection>();
+            private readonly Queue<IpcEndpointInfo> _connections = new Queue<IpcEndpointInfo>();
             private readonly SemaphoreSlim _connectionsSemaphore = new SemaphoreSlim(0);
             private readonly Task _listenTask;
             private readonly ITestOutputHelper _outputHelper;
@@ -499,7 +486,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 }
             }
 
-            public async Task<ReversedDiagnosticsConnection> AcceptAsync(CancellationToken token)
+            public async Task<IpcEndpointInfo> AcceptAsync(CancellationToken token)
             {
                 using var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(token, _cancellation.Token);
 
@@ -520,7 +507,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 while (!token.IsCancellationRequested)
                 {
-                    ReversedDiagnosticsConnection connection;
+                    IpcEndpointInfo connection;
                     try
                     {
                         _outputHelper.WriteLine("Waiting for connection from server.");

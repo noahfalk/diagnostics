@@ -43,14 +43,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
         // This should be a large timeout in order to allow the runtime instance to reconnect and provide
         // a new stream once the previous stream has started its diagnostics request and response.
         private static readonly TimeSpan ConnectWaitTimeout = TimeSpan.FromSeconds(30);
-        // The amount of time to wait for exclusive "lock" on the stream field. This should be relatively
-        // short since modification of the stream field so not take a significant amount of time.
-        private static readonly TimeSpan StreamSemaphoreWaitTimeout = TimeSpan.FromSeconds(5);
         // The amount of time to wait before testing the stream again after previously
         // testing the stream within the WaitForConnectionAsync method.
         private static readonly TimeSpan WaitForConnectionInterval = TimeSpan.FromMilliseconds(20);
 
-        private readonly SemaphoreSlim _streamSemaphore = new SemaphoreSlim(1);
+        private readonly object _lock = new object();
         private readonly Queue<StreamTarget> _targets = new Queue<StreamTarget>();
 
         private bool _disposed;
@@ -103,7 +100,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 {
                     try
                     {
-                        await RegisterTargetAsync(target, token);
+                        RegisterTarget(target);
 
                         // Wait for a stream to be provided by the target
                         isConnected = await hasConnectedStreamSource.Task;
@@ -130,72 +127,58 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 ProvideStream(stream: null);
 
-                _streamSemaphore.Dispose();
-
                 _disposed = true;
             }
         }
 
         protected void ProvideStream(Stream stream)
         {
-            if (!_streamSemaphore.Wait(StreamSemaphoreWaitTimeout))
+            // Get the previous stream in order to dispose it later
+            Stream previousStream = null;
+            lock (_lock)
             {
-                throw new TimeoutException();
+                previousStream = _stream;
+                BindStreamToTarget(stream);
             }
-
-            ProvideStreamReleaseSemaphore(stream);
-        }
-
-        private void ProvideStreamReleaseSemaphore(Stream stream)
-        {
-            BindStreamToTarget(stream);
+            // Dispose the previous stream if there was one.
+            previousStream?.Dispose();
         }
 
         private void BindStreamToTarget(Stream stream)
         {
-            // Get the previous stream in order to dispose it later
-            Stream previousStream = stream != _stream ? _stream : null;
-            try
+            Debug.Assert(Monitor.IsEntered(_lock));
+
+            // If there are any targets waiting for a stream, provide
+            // it to the first target in the queue.
+            if (_targets.Count > 0)
             {
-                // If there are any targets waiting for a stream, provide
-                // it to the first target in the queue.
-                if (_targets.Count > 0)
+                while (null != stream)
                 {
-                    while (null != stream)
+                    StreamTarget target = _targets.Dequeue();
+                    if (target.SetStream(stream))
                     {
-                        StreamTarget target = _targets.Dequeue();
-                        if (target.SetStream(stream))
-                        {
-                            stream = null;
-                        }
-                        else
-                        {
-                            // The target didn't accept the stream; this could be
-                            // due to:
-                            // 1. the thread that registered the target no longer
-                            // needing the stream (e.g. it was async awaiting and
-                            // was cancelled).
-                            // 2. the target only wanted to test that the stream
-                            // was available but didn't need to use it.
-                            // Dispose the target to release any resources it may
-                            // have.
-                            target.Dispose();
-                        }
+                        stream = null;
+                    }
+                    else
+                    {
+                        // The target didn't accept the stream; this could be
+                        // due to:
+                        // 1. the thread that registered the target no longer
+                        // needing the stream (e.g. it was async awaiting and
+                        // was cancelled).
+                        // 2. the target only wanted to test that the stream
+                        // was available but didn't need to use it.
+                        // Dispose the target to release any resources it may
+                        // have.
+                        target.Dispose();
                     }
                 }
-
-                // Store the stream for when a target registers for the stream. If
-                // a target was already provided the stream, this will be null, thus
-                // representing that no existing stream is waiting to be consumed.
-                _stream = stream;
-
-                // Dispose the previous stream if there was one.
-                previousStream?.Dispose();
             }
-            finally
-            {
-                _streamSemaphore.Release();
-            }
+
+            // Store the stream for when a target registers for the stream. If
+            // a target was already provided the stream, this will be null, thus
+            // representing that no existing stream is waiting to be consumed.
+            _stream = stream;
         }
 
         protected virtual Stream RefreshStream()
@@ -248,27 +231,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private void RegisterTarget(StreamTarget target)
         {
-            if (!_streamSemaphore.Wait(StreamSemaphoreWaitTimeout))
-            {
-                throw new TimeoutException();
-            }
-
-            RegisterTargetReleaseSemaphore(target);
-        }
-
-        private async Task RegisterTargetAsync(StreamTarget target, CancellationToken token)
-        {
-            if (!(await _streamSemaphore.WaitAsync(StreamSemaphoreWaitTimeout, token)))
-            {
-                throw new TimeoutException();
-            }
-
-            RegisterTargetReleaseSemaphore(target);
-        }
-
-        private void RegisterTargetReleaseSemaphore(StreamTarget target)
-        {
-            try
+            lock (_lock)
             {
                 // Allow transport specific implementation to refresh
                 // the stream before possibly consuming it.
@@ -282,10 +245,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 {
                     BindStreamToTarget(_stream);
                 }
-            }
-            finally
-            {
-                _streamSemaphore.Release();
             }
         }
 

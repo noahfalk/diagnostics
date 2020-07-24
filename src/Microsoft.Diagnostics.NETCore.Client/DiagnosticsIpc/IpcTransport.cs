@@ -149,15 +149,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             // If there are any targets waiting for a stream, provide
             // it to the first target in the queue.
-            if (_handlers.Count > 0)
+            while (null != stream && _handlers.Count > 0)
             {
-                while (null != stream)
+                Func<Stream, bool> handler = _handlers.Dequeue();
+                if (handler(stream))
                 {
-                    Func<Stream, bool> handler = _handlers.Dequeue();
-                    if (handler(stream))
-                    {
-                        stream = null;
-                    }
+                    stream = null;
                 }
             }
 

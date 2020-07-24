@@ -2,12 +2,16 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.IO;
 
 namespace Microsoft.Diagnostics.NETCore.Client
 {
     internal class IpcClient
     {
+        // The amount of time to wait for a stream to be available for consumption by the Connect method.
+        private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(3);
+
         /// <summary>
         /// Sends a single DiagnosticsIpc Message to the dotnet process with PID processId.
         /// </summary>
@@ -16,7 +20,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <returns>The response DiagnosticsIpc Message from the dotnet process</returns>
         public static IpcMessage SendMessage(IpcEndpoint endpoint, IpcMessage message)
         {
-            using (var stream = endpoint.Connect())
+            using (var stream = endpoint.Connect(ConnectTimeout))
             {
                 Write(stream, message);
                 return Read(stream);
@@ -33,7 +37,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <returns>The response DiagnosticsIpc Message from the dotnet process</returns>
         public static Stream SendMessage(IpcEndpoint endpoint, IpcMessage message, out IpcMessage response)
         {
-            var stream = endpoint.Connect();
+            var stream = endpoint.Connect(ConnectTimeout);
             Write(stream, message);
             response = Read(stream);
             return stream;

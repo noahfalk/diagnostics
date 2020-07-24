@@ -18,16 +18,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
 {
     internal abstract class IpcEndpoint
     {
-        // The amount of time to wait for a stream to be available for consumption by the Connect method.
-        // This should be a large timeout in order to allow the runtime instance to reconnect and provide
-        // a new stream once the previous stream has started its diagnostics request and response.
-        protected static readonly TimeSpan ConnectWaitTimeout = TimeSpan.FromSeconds(30);
-
         /// <summary>
         /// Connects to the underlying IPC Transport and opens a read/write-able Stream
         /// </summary>
+        /// <param name="timeout">The amount of time to block attempting to connect</param>
         /// <returns>A Stream for writing and reading data to and from the target .NET process</returns>
-        public abstract Stream Connect();
+        public abstract Stream Connect(TimeSpan timeout);
 
         /// <summary>
         /// Wait for an available diagnostics connection to the runtime instance.
@@ -60,7 +56,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// the stream is acquired previously and the runtime instance has not yet reconnected
         /// to the reversed diagnostics server.
         /// </remarks>
-        public override Stream Connect()
+        public override Stream Connect(TimeSpan timeout)
         {
             using var streamEvent = new ManualResetEvent(false);
             Stream stream = null;
@@ -70,7 +66,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 return streamEvent.Set();
             });
 
-            if (streamEvent.WaitOne(ConnectWaitTimeout))
+            if (streamEvent.WaitOne(timeout))
             {
                 throw new TimeoutException();
             }
@@ -230,7 +226,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
     internal class PidIpcEndpoint : IpcEndpoint
     {
-        private static double ConnectTimeoutMilliseconds { get; } = TimeSpan.FromSeconds(3).TotalMilliseconds;
         public static string IpcRootPath { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"\\.\pipe\" : Path.GetTempPath();
         public static string DiagnosticsPortPattern { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"^dotnet-diagnostic-(\d+)$" : @"^dotnet-diagnostic-(\d+)-(\d+)-socket$";
 
@@ -247,34 +242,29 @@ namespace Microsoft.Diagnostics.NETCore.Client
             _pid = pid;
         }
 
-        public override Stream Connect()
-        {
-            return ConnectStream();
-        }
-
-        public override async Task WaitForConnectionAsync(CancellationToken token)
-        {
-            Stream s = await ConnectStreamAsync(token);
-            s.Dispose();
-        }
-
-
-        Stream ConnectStream()
+        public override Stream Connect(TimeSpan timeout)
         {
             string address = GetDefaultAddress();
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 var namedPipe = new NamedPipeClientStream(
                     ".", address, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
-                namedPipe.Connect((int)ConnectTimeoutMilliseconds);
+                namedPipe.Connect((int)timeout.TotalMilliseconds);
                 return namedPipe;
             }
             else
             {
                 var socket = new UnixDomainSocket();
+                // BUG? this path makes no use of the timeout
                 socket.Connect(Path.Combine(IpcRootPath, address));
                 return new ExposedSocketNetworkStream(socket, ownsSocket: true);
             }
+        }
+
+        public override async Task WaitForConnectionAsync(CancellationToken token)
+        {
+            Stream s = await ConnectStreamAsync(token);
+            s.Dispose();
         }
 
         async Task<Stream> ConnectStreamAsync(CancellationToken token)

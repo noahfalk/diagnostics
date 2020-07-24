@@ -153,10 +153,14 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </returns>
         private bool ProvideStreamReleaseSemaphore(Stream stream)
         {
-            // Get the previous stream in order to dispose it later
-            Stream previousStream = _stream;
-            bool targetOwnsSemaphore = false;
+            return BindStreamToTarget(stream);
+        }
 
+        private bool BindStreamToTarget(Stream stream)
+        {
+            // Get the previous stream in order to dispose it later
+            Stream previousStream = stream != _stream ? _stream : null;
+            bool targetOwnsSemaphore = false;
             try
             {
                 // If there are any targets waiting for a stream, provide
@@ -285,21 +289,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 {
                     _stream = RefreshStream();
                 }
+                _targets.Enqueue(target);
 
-                // If there is no current stream, add the target to the queue;
-                // it will be fulfilled at some point in the future when streams
-                // are made available. Otherwise, provide the stream to the target
-                // synchronously; set the current stream to null to signify that
-                // there is no current stream available.
-                if (null == _stream)
+                if (_stream != null)
                 {
-                    _targets.Enqueue(target);
-                }
-                else if (target.SetStream(_stream))
-                {
-                    _stream = null;
-
-                    targetOwnsSemaphore = target.ReleaseSemaphoreOnDispose;
+                    targetOwnsSemaphore = BindStreamToTarget(_stream);
                 }
             }
             finally

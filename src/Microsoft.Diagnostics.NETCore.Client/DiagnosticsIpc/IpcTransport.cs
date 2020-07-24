@@ -65,7 +65,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public Stream Connect()
         {
             using var streamEvent = new ManualResetEvent(false);
-            using var target = new StreamTarget(_streamSemaphore, false, () => streamEvent.Set());
+            using var target = new StreamTarget(_streamSemaphore, false, _ => streamEvent.Set());
 
             RegisterTarget(target);
 
@@ -80,42 +80,32 @@ namespace Microsoft.Diagnostics.NETCore.Client
             bool isConnected = false;
             do
             {
-                TaskCompletionSource<object> streamSource = new TaskCompletionSource<object>();
-                using IDisposable _registration = token.Register(() => streamSource.TrySetCanceled());
-                using (var target = new StreamTarget(_streamSemaphore, true,  () => streamSource.TrySetResult(null)))
+                TaskCompletionSource<bool> hasConnectedStreamSource = new TaskCompletionSource<bool>();
+                using IDisposable _registration = token.Register(() => hasConnectedStreamSource.TrySetCanceled());
+                using (var target = new StreamTarget(_streamSemaphore, false,  s =>
                 {
-                    Stream stream = null;
+                    bool isConnected = TestStream(s);
+                    if (isConnected)
+                    {
+                        s.Dispose();
+                    }
+                    hasConnectedStreamSource.TrySetResult(isConnected);
+                    // if the stream wasn't connected we accept it so that we can dispose of it
+                    // if the stream was connected then we don't accept it to keep it available
+                    // for later consumers
+                    return !isConnected;
+                }))
+                {
                     try
                     {
                         await RegisterTargetAsync(target, token);
 
                         // Wait for a stream to be provided by the target
-                        await streamSource.Task;
-
-                        stream = target.Stream;
-
-                        // Test if the stream is viable
-                        isConnected = TestStream(stream);
+                        isConnected = await hasConnectedStreamSource.Task;
                     }
                     catch (Exception ex) when (!(ex is OperationCanceledException))
                     {
                         // Handle all exceptions except cancellation
-                    }
-                    finally
-                    {
-                        // If the stream is not connected, it can be disposed;
-                        // otherwise, make the stream available again since waiting
-                        // for the stream to connect should not consume the stream.
-                        if (!isConnected)
-                        {
-                            stream?.Dispose();
-                        }
-                        else if (ProvideStreamReleaseSemaphore(stream))
-                        {
-                            // Another target was able to take ownership of the stream semaphore.
-                            // Update the current target to not release the semaphore on dispose.
-                            target.ReleaseSemaphoreOnDispose = false;
-                        }
                     }
                 }
 
@@ -181,11 +171,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
                         }
                         else
                         {
-                            // The target didn't accept the stream; this is due
-                            // to the thread that registered the target no longer
+                            // The target didn't accept the stream; this could be
+                            // due to:
+                            // 1. the thread that registered the target no longer
                             // needing the stream (e.g. it was async awaiting and
-                            // was cancelled). Dispose the target to release any
-                            // resources it may have.
+                            // was cancelled).
+                            // 2. the target only wanted to test that the stream
+                            // was available but didn't need to use it.
+                            // Dispose the target to release any resources it may
+                            // have.
                             target.Dispose();
                         }
                     }
@@ -317,9 +311,9 @@ namespace Microsoft.Diagnostics.NETCore.Client
             private readonly SemaphoreSlim _semaphore;
 
             private bool _isDisposed;
-            private Func<bool> _acceptStreamHandler;
+            private Func<Stream, bool> _acceptStreamHandler;
 
-            public StreamTarget(SemaphoreSlim semaphore, bool takeOwneshipOnAccept, Func<bool> acceptStreamHandler)
+            public StreamTarget(SemaphoreSlim semaphore, bool takeOwneshipOnAccept, Func<Stream, bool> acceptStreamHandler)
             {
                 _semaphore = semaphore;
 
@@ -360,7 +354,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 return acceptedStream;
             }
 
-            protected bool AcceptStream() => _acceptStreamHandler();
+            protected bool AcceptStream() => _acceptStreamHandler(Stream);
 
             public Stream Stream { get; private set; }
 

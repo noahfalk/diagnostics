@@ -21,10 +21,36 @@ namespace Microsoft.Diagnostics.NETCore.Client
         // The amount of time to wait for a stream to be available for consumption by the Connect method.
         // This should be a large timeout in order to allow the runtime instance to reconnect and provide
         // a new stream once the previous stream has started its diagnostics request and response.
-        private static readonly TimeSpan ConnectWaitTimeout = TimeSpan.FromSeconds(30);
+        protected static readonly TimeSpan ConnectWaitTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Connects to the underlying IPC Transport and opens a read/write-able Stream
+        /// </summary>
+        /// <returns>A Stream for writing and reading data to and from the target .NET process</returns>
+        public abstract Stream Connect();
+
+        /// <summary>
+        /// Wait for an available diagnostics connection to the runtime instance.
+        /// </summary>
+        /// <param name="token">The token to monitor for cancellation requests.</param>
+        /// <returns>
+        /// A task the completes when a diagnostics connection to the runtime instance becomes available.
+        /// </returns>
+        public abstract Task WaitForConnectionAsync(CancellationToken token);
+    }
+
+    internal class ServerIpcEndpoint : IpcEndpoint, IDisposable
+    {
+        /// <summary>
+        /// Updates the endpoint with a new diagnostics stream.
+        /// </summary>
+        internal void SetStream(Stream stream)
+        {
+            ProvideStream(stream);
+        }
 
         private readonly object _lock = new object();
-        private readonly Queue<Func<Stream,bool>> _handlers = new Queue<Func<Stream,bool>>();
+        private readonly Queue<Func<Stream, bool>> _handlers = new Queue<Func<Stream, bool>>();
 
         private bool _disposed;
         private Stream _stream;
@@ -34,7 +60,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// the stream is acquired previously and the runtime instance has not yet reconnected
         /// to the reversed diagnostics server.
         /// </remarks>
-        public Stream Connect()
+        public override Stream Connect()
         {
             using var streamEvent = new ManualResetEvent(false);
             Stream stream = null;
@@ -44,7 +70,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 return streamEvent.Set();
             });
 
-            if(streamEvent.WaitOne(ConnectWaitTimeout))
+            if (streamEvent.WaitOne(ConnectWaitTimeout))
             {
                 throw new TimeoutException();
             }
@@ -52,7 +78,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return stream;
         }
 
-        public async Task WaitForConnectionAsync(CancellationToken token)
+        public override async Task WaitForConnectionAsync(CancellationToken token)
         {
             bool isConnected = false;
             do
@@ -131,7 +157,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 while (null != stream)
                 {
-                    Func<Stream,bool> handler = _handlers.Dequeue();
+                    Func<Stream, bool> handler = _handlers.Dequeue();
                     if (handler(stream))
                     {
                         stream = null;
@@ -143,11 +169,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
             // a handler already captured the stream, this will be null, thus
             // representing that no existing stream is waiting to be consumed.
             _stream = stream;
-        }
-
-        protected virtual Stream RefreshStream()
-        {
-            return null;
         }
 
         private bool TestStream(Stream stream)
@@ -197,12 +218,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
         {
             lock (_lock)
             {
-                // Allow transport specific implementation to refresh
-                // the stream before possibly consuming it.
-                if (null == _stream)
-                {
-                    _stream = RefreshStream();
-                }
                 _handlers.Enqueue(handler);
 
                 if (_stream != null)
@@ -210,17 +225,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     RunStreamHandlers(_stream);
                 }
             }
-        }
-    }
-
-    internal class ServerIpcEndpoint : IpcEndpoint, IDisposable
-    {
-        /// <summary>
-        /// Updates the endpoint with a new diagnostics stream.
-        /// </summary>
-        internal void SetStream(Stream stream)
-        {
-            ProvideStream(stream);
         }
     }
 
@@ -243,7 +247,40 @@ namespace Microsoft.Diagnostics.NETCore.Client
             _pid = pid;
         }
 
-        protected override Stream RefreshStream()
+        public override Stream Connect()
+        {
+            return ConnectStream();
+        }
+
+        public override Task WaitForConnectionAsync(CancellationToken token)
+        {
+            // TODO: calling a long-running blocking operation isn't a well-behaved async API
+            // we'll fix it, but for the moment it isn't worse than the previous behavior
+            Stream s = ConnectStream();
+            s.Dispose();
+            return Task.CompletedTask;
+        }
+
+
+        Stream ConnectStream()
+        {
+            string address = GetDefaultAddress();
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var namedPipe = new NamedPipeClientStream(
+                    ".", address, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+                namedPipe.Connect((int)ConnectTimeoutMilliseconds);
+                return namedPipe;
+            }
+            else
+            {
+                var socket = new UnixDomainSocket();
+                socket.Connect(Path.Combine(IpcRootPath, address));
+                return new ExposedSocketNetworkStream(socket, ownsSocket: true);
+            }
+        }
+
+        private string GetDefaultAddress()
         {
             try
             {
@@ -258,39 +295,26 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 throw new ServerNotAvailableException($"Process {_pid} seems to be elevated.");
             }
 
-            if (!TryGetTransportName(_pid, out string transportName))
+            if (!TryGetDefaultAddress(_pid, out string transportName))
             {
                 throw new ServerNotAvailableException($"Process {_pid} not running compatible .NET runtime.");
             }
-
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                var namedPipe = new NamedPipeClientStream(
-                    ".", transportName, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
-                namedPipe.Connect((int)ConnectTimeoutMilliseconds);
-                return namedPipe;
-            }
-            else
-            {
-                var socket = new UnixDomainSocket();
-                socket.Connect(Path.Combine(IpcRootPath, transportName));
-                return new ExposedSocketNetworkStream(socket, ownsSocket: true);
-            }
+            return transportName;
         }
 
-        private static bool TryGetTransportName(int pid, out string transportName)
+        private static bool TryGetDefaultAddress(int pid, out string defaultAddress)
         {
-            transportName = null;
+            defaultAddress = null;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                transportName = $"dotnet-diagnostic-{pid}";
+                defaultAddress = $"dotnet-diagnostic-{pid}";
             }
             else
             {
                 try
                 {
-                    transportName = Directory.GetFiles(IpcRootPath, $"dotnet-diagnostic-{pid}-*-socket") // Try best match.
+                    defaultAddress = Directory.GetFiles(IpcRootPath, $"dotnet-diagnostic-{pid}-*-socket") // Try best match.
                         .OrderByDescending(f => new FileInfo(f).LastWriteTime)
                         .FirstOrDefault();
                 }
@@ -299,7 +323,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 }
             }
 
-            return !string.IsNullOrEmpty(transportName);
+            return !string.IsNullOrEmpty(defaultAddress);
         }
     }
 }

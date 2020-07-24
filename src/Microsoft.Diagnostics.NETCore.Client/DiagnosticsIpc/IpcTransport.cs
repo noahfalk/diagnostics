@@ -252,13 +252,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return ConnectStream();
         }
 
-        public override Task WaitForConnectionAsync(CancellationToken token)
+        public override async Task WaitForConnectionAsync(CancellationToken token)
         {
-            // TODO: calling a long-running blocking operation isn't a well-behaved async API
-            // we'll fix it, but for the moment it isn't worse than the previous behavior
-            Stream s = ConnectStream();
+            Stream s = await ConnectStreamAsync(token);
             s.Dispose();
-            return Task.CompletedTask;
         }
 
 
@@ -276,6 +273,24 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 var socket = new UnixDomainSocket();
                 socket.Connect(Path.Combine(IpcRootPath, address));
+                return new ExposedSocketNetworkStream(socket, ownsSocket: true);
+            }
+        }
+
+        async Task<Stream> ConnectStreamAsync(CancellationToken token)
+        {
+            string address = GetDefaultAddress();
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var namedPipe = new NamedPipeClientStream(
+                    ".", address, PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+                await namedPipe.ConnectAsync(token);
+                return namedPipe;
+            }
+            else
+            {
+                var socket = new UnixDomainSocket();
+                await socket.ConnectAsync(Path.Combine(IpcRootPath, address));
                 return new ExposedSocketNetworkStream(socket, ownsSocket: true);
             }
         }

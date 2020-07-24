@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 
 namespace Microsoft.Diagnostics.NETCore.Client
 {
@@ -33,6 +34,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             _ownsSocketFile = false;
             _path = path;
+        }
+
+        public Task ConnectAsync(string path)
+        {
+            EndPoint ep = CreateUnixDomainSocketEndPoint(path);
+            return Task.Factory.FromAsync(BeginConnect, EndConnect, ep, null);
         }
 
         protected override void Dispose(bool disposing)

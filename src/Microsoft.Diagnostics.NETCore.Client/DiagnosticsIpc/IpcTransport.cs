@@ -35,21 +35,16 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public abstract Task WaitForConnectionAsync(CancellationToken token);
     }
 
-    internal class ServerIpcEndpoint : IpcEndpoint, IDisposable
+    internal class ServerIpcEndpoint : IpcEndpoint
     {
-        /// <summary>
-        /// Updates the endpoint with a new diagnostics stream.
-        /// </summary>
-        internal void SetStream(Stream stream)
+        private readonly Guid _runtimeId;
+        private readonly ReversedDiagnosticsServer _server;
+
+        public ServerIpcEndpoint(Guid runtimeId, ReversedDiagnosticsServer server)
         {
-            ProvideStream(stream);
+            _runtimeId = runtimeId;
+            _server = server;
         }
-
-        private readonly object _lock = new object();
-        private readonly Queue<Func<Stream, bool>> _handlers = new Queue<Func<Stream, bool>>();
-
-        private bool _disposed;
-        private Stream _stream;
 
         /// <remarks>
         /// This will block until the diagnostic stream is provided. This block can happen if
@@ -58,166 +53,23 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         public override Stream Connect(TimeSpan timeout)
         {
-            using var streamEvent = new ManualResetEvent(false);
-            Stream stream = null;
-            RegisterHandler(s =>
-            {
-                stream = s;
-                return streamEvent.Set();
-            });
-
-            if (streamEvent.WaitOne(timeout))
-            {
-                throw new TimeoutException();
-            }
-
-            return stream;
+            return _server.Connect(_runtimeId, timeout);
         }
 
         public override async Task WaitForConnectionAsync(CancellationToken token)
         {
-            bool isConnected = false;
-            do
-            {
-                bool ignore = false;
-                TaskCompletionSource<bool> hasConnectedStreamSource = new TaskCompletionSource<bool>();
-                using IDisposable _registration = token.Register(() => hasConnectedStreamSource.TrySetCanceled());
-                RegisterHandler(s =>
-                {
-                    if (ignore)
-                    {
-                        return false;
-                    }
-                    bool isConnected = TestStream(s);
-                    if (isConnected)
-                    {
-                        s.Dispose();
-                    }
-                    hasConnectedStreamSource.TrySetResult(isConnected);
-                    // if the stream wasn't connected we accept it so that we can dispose of it
-                    // if the stream was connected then we don't accept it to keep it available
-                    // for later consumers
-                    return !isConnected;
-                });
-                {
-                    try
-                    {
-                        // Wait for the handler to verify we have a connected stream
-                        isConnected = await hasConnectedStreamSource.Task;
-                    }
-                    catch (Exception ex) when (!(ex is OperationCanceledException))
-                    {
-                        // Handle all exceptions except cancellation
-                    }
-                    finally
-                    {
-                        // if we exited with an exception the handler might still be registered
-                        // and will run later. Let it exit quickly.
-                        ignore = true;
-                    }
-                }
-            }
-            while (!isConnected);
+            await _server.WaitForConnectionAsync(_runtimeId, token);
         }
 
-        public void Dispose()
+        public override bool Equals(object obj)
         {
-            if (!_disposed)
-            {
-                ProvideStream(stream: null);
-
-                _disposed = true;
-            }
+            ServerIpcEndpoint other = obj as ServerIpcEndpoint;
+            return other != null && other._runtimeId == _runtimeId && other._server == _server; 
         }
 
-        protected void ProvideStream(Stream stream)
+        public override int GetHashCode()
         {
-            // Get the previous stream in order to dispose it later
-            Stream previousStream = null;
-            lock (_lock)
-            {
-                previousStream = _stream;
-                RunStreamHandlers(stream);
-            }
-            // Dispose the previous stream if there was one.
-            previousStream?.Dispose();
-        }
-
-        private void RunStreamHandlers(Stream stream)
-        {
-            Debug.Assert(Monitor.IsEntered(_lock));
-
-            // If there are any targets waiting for a stream, provide
-            // it to the first target in the queue.
-            while (null != stream && _handlers.Count > 0)
-            {
-                Func<Stream, bool> handler = _handlers.Dequeue();
-                if (handler(stream))
-                {
-                    stream = null;
-                }
-            }
-
-            // Store the stream for when a handler registers later. If
-            // a handler already captured the stream, this will be null, thus
-            // representing that no existing stream is waiting to be consumed.
-            _stream = stream;
-        }
-
-        private bool TestStream(Stream stream)
-        {
-            if (null == stream)
-            {
-                throw new ArgumentNullException(nameof(stream));
-            }
-
-            if (stream is ExposedSocketNetworkStream networkStream)
-            {
-                // Update Connected state of socket by sending non-blocking zero-byte data.
-                Socket socket = networkStream.Socket;
-                bool blocking = socket.Blocking;
-                try
-                {
-                    socket.Blocking = false;
-                    socket.Send(Array.Empty<byte>(), 0, SocketFlags.None);
-                }
-                catch (Exception)
-                {
-                }
-                finally
-                {
-                    socket.Blocking = blocking;
-                }
-                return socket.Connected;
-            }
-            else if (stream is PipeStream pipeStream)
-            {
-                Debug.Assert(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "Pipe stream should only be used on Windows.");
-
-                // PeekNamedPipe will return false if the pipe is disconnected/broken.
-                return NativeMethods.PeekNamedPipe(
-                    pipeStream.SafePipeHandle,
-                    null,
-                    0,
-                    IntPtr.Zero,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-            }
-
-            return false;
-        }
-
-        private void RegisterHandler(Func<Stream, bool> handler)
-        {
-            lock (_lock)
-            {
-                _handlers.Enqueue(handler);
-
-                if (_stream != null)
-                {
-                    RunStreamHandlers(_stream);
-                }
-            }
+            return _runtimeId.GetHashCode() ^ _server.GetHashCode();
         }
     }
 
@@ -326,6 +178,17 @@ namespace Microsoft.Diagnostics.NETCore.Client
             }
 
             return !string.IsNullOrEmpty(defaultAddress);
+        }
+
+        public override bool Equals(object obj)
+        {
+            PidIpcEndpoint other = obj as PidIpcEndpoint;
+            return other != null && other._pid == _pid;
+        }
+
+        public override int GetHashCode()
+        {
+            return _pid.GetHashCode();
         }
     }
 }

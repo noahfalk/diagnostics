@@ -18,14 +18,14 @@ namespace Microsoft.Diagnostics.NETCore.Client
     [DebuggerDisplay("PID={ProcessId}, Cookie={RuntimeInstanceCookie}")]
     internal class ReversedDiagnosticsConnection : IDisposable
     {
-        private readonly IIpcEndpoint _endpoint;
+        private readonly IpcEndpoint _endpoint;
         private readonly int _processId;
         private readonly Guid _runtimeInstanceCookie;
         private readonly ReversedDiagnosticsServer _server;
 
         private bool _disposed;
 
-        internal ReversedDiagnosticsConnection(ReversedDiagnosticsServer server, IIpcEndpoint endpoint, int processId, Guid runtimeInstanceCookie)
+        internal ReversedDiagnosticsConnection(ReversedDiagnosticsServer server, IpcEndpoint endpoint, int processId, Guid runtimeInstanceCookie)
         {
             _endpoint = endpoint;
             _processId = processId;
@@ -54,7 +54,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <summary>
         /// An endpoint used to retrieve diagnostic information from the associated runtime instance.
         /// </summary>
-        public IIpcEndpoint Endpoint
+        public IpcEndpoint Endpoint
         {
             get
             {

@@ -14,7 +14,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="endpoint">An endpoint that provides a diagnostics connection to a runtime instance.</param>
         /// <param name="message">The DiagnosticsIpc Message to be sent</param>
         /// <returns>The response DiagnosticsIpc Message from the dotnet process</returns>
-        public static IpcMessage SendMessage(IIpcEndpoint endpoint, IpcMessage message)
+        public static IpcMessage SendMessage(IpcEndpoint endpoint, IpcMessage message)
         {
             using (var stream = endpoint.Connect())
             {
@@ -31,7 +31,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="message">The DiagnosticsIpc Message to be sent</param>
         /// <param name="response">out var for response message</param>
         /// <returns>The response DiagnosticsIpc Message from the dotnet process</returns>
-        public static Stream SendMessage(IIpcEndpoint endpoint, IpcMessage message, out IpcMessage response)
+        public static Stream SendMessage(IpcEndpoint endpoint, IpcMessage message, out IpcMessage response)
         {
             var stream = endpoint.Connect();
             Write(stream, message);

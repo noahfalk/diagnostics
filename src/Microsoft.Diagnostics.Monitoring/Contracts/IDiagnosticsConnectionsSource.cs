@@ -12,7 +12,7 @@ namespace Microsoft.Diagnostics.Monitoring
 {
     internal interface IDiagnosticsConnection
     {
-        IIpcEndpoint Endpoint { get; }
+        IpcEndpoint Endpoint { get; }
 
         int ProcessId { get; }
 

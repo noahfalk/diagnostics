@@ -255,7 +255,7 @@ namespace Microsoft.Diagnostics.Monitoring
                 _connection = connection;
             }
 
-            public IIpcEndpoint Endpoint => _connection.Endpoint;
+            public IpcEndpoint Endpoint => _connection.Endpoint;
 
             public int ProcessId => _connection.ProcessId;
 

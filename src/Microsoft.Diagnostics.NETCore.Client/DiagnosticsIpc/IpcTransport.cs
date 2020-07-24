@@ -16,28 +16,7 @@ using System.Threading.Tasks;
 
 namespace Microsoft.Diagnostics.NETCore.Client
 {
-    /// <summary>
-    /// An endpoint used to acquire the diagnostics stream for a runtime instance.
-    /// </summary>
-    internal interface IIpcEndpoint
-    {
-        /// <summary>
-        /// Wait for an available diagnostics connection to the runtime instance.
-        /// </summary>
-        /// <param name="token">The token to monitor for cancellation requests.</param>
-        /// <returns>
-        /// A task the completes when a diagnostics connection to the runtime instance becomes available.
-        /// </returns>
-        Task WaitForConnectionAsync(CancellationToken token);
-
-        /// <summary>
-        /// Connects to the underlying IPC Transport and opens a read/write-able Stream
-        /// </summary>
-        /// <returns>A Stream for writing and reading data to and from the target .NET process</returns>
-        Stream Connect();
-    }
-
-    internal abstract class BaseIpcEndpoint : IIpcEndpoint
+    internal abstract class IpcEndpoint
     {
         // The amount of time to wait for a stream to be available for consumption by the Connect method.
         // This should be a large timeout in order to allow the runtime instance to reconnect and provide
@@ -50,7 +29,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private bool _disposed;
         private Stream _stream;
 
-        /// <inheritdoc cref="IIpcEndpoint.Connect"/>
         /// <remarks>
         /// This will block until the diagnostic stream is provided. This block can happen if
         /// the stream is acquired previously and the runtime instance has not yet reconnected
@@ -74,7 +52,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return stream;
         }
 
-        /// <inheritdoc cref="IIpcEndpoint.WaitForConnectionAsync(CancellationToken)"/>
         public async Task WaitForConnectionAsync(CancellationToken token)
         {
             bool isConnected = false;
@@ -236,7 +213,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
     }
 
-    internal class ServerIpcEndpoint : BaseIpcEndpoint, IIpcEndpoint, IDisposable
+    internal class ServerIpcEndpoint : IpcEndpoint, IDisposable
     {
         /// <summary>
         /// Updates the endpoint with a new diagnostics stream.
@@ -247,7 +224,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
     }
 
-    internal class PidIpcEndpoint : BaseIpcEndpoint, IIpcEndpoint
+    internal class PidIpcEndpoint : IpcEndpoint
     {
         private static double ConnectTimeoutMilliseconds { get; } = TimeSpan.FromSeconds(3).TotalMilliseconds;
         public static string IpcRootPath { get; } = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? @"\\.\pipe\" : Path.GetTempPath();

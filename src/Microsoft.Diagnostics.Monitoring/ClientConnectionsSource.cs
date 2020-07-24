@@ -34,7 +34,7 @@ namespace Microsoft.Diagnostics.Monitoring
                 ProcessId = processId;
             }
 
-            public IIpcEndpoint Endpoint { get; }
+            public IpcEndpoint Endpoint { get; }
 
             public int ProcessId { get; }
 

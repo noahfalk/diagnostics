@@ -48,7 +48,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private static readonly TimeSpan WaitForConnectionInterval = TimeSpan.FromMilliseconds(20);
 
         private readonly object _lock = new object();
-        private readonly Queue<StreamTarget> _targets = new Queue<StreamTarget>();
+        private readonly Queue<Func<Stream,bool>> _handlers = new Queue<Func<Stream,bool>>();
 
         private bool _disposed;
         private Stream _stream;
@@ -63,13 +63,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
         {
             using var streamEvent = new ManualResetEvent(false);
             Stream stream = null;
-            using var target = new StreamTarget(s =>
+            RegisterHandler(s =>
             {
                 stream = s;
                 return streamEvent.Set();
             });
-
-            RegisterTarget(target);
 
             streamEvent.WaitOne(ConnectWaitTimeout);
 
@@ -82,10 +80,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
             bool isConnected = false;
             do
             {
+                bool ignore = false;
                 TaskCompletionSource<bool> hasConnectedStreamSource = new TaskCompletionSource<bool>();
                 using IDisposable _registration = token.Register(() => hasConnectedStreamSource.TrySetCanceled());
-                using (var target = new StreamTarget(s =>
+                RegisterHandler(s =>
                 {
+                    if (ignore)
+                    {
+                        return false;
+                    }
                     bool isConnected = TestStream(s);
                     if (isConnected)
                     {
@@ -96,18 +99,22 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     // if the stream was connected then we don't accept it to keep it available
                     // for later consumers
                     return !isConnected;
-                }))
+                });
                 {
                     try
                     {
-                        RegisterTarget(target);
-
-                        // Wait for a stream to be provided by the target
+                        // Wait for the handler to verify we have a connected stream
                         isConnected = await hasConnectedStreamSource.Task;
                     }
                     catch (Exception ex) when (!(ex is OperationCanceledException))
                     {
                         // Handle all exceptions except cancellation
+                    }
+                    finally
+                    {
+                        // if we exited with an exception the handler might still be registered
+                        // and will run later. Let it exit quickly.
+                        ignore = true;
                     }
                 }
 
@@ -138,45 +145,32 @@ namespace Microsoft.Diagnostics.NETCore.Client
             lock (_lock)
             {
                 previousStream = _stream;
-                BindStreamToTarget(stream);
+                RunStreamHandlers(stream);
             }
             // Dispose the previous stream if there was one.
             previousStream?.Dispose();
         }
 
-        private void BindStreamToTarget(Stream stream)
+        private void RunStreamHandlers(Stream stream)
         {
             Debug.Assert(Monitor.IsEntered(_lock));
 
             // If there are any targets waiting for a stream, provide
             // it to the first target in the queue.
-            if (_targets.Count > 0)
+            if (_handlers.Count > 0)
             {
                 while (null != stream)
                 {
-                    StreamTarget target = _targets.Dequeue();
-                    if (target.SetStream(stream))
+                    Func<Stream,bool> handler = _handlers.Dequeue();
+                    if (handler(stream))
                     {
                         stream = null;
-                    }
-                    else
-                    {
-                        // The target didn't accept the stream; this could be
-                        // due to:
-                        // 1. the thread that registered the target no longer
-                        // needing the stream (e.g. it was async awaiting and
-                        // was cancelled).
-                        // 2. the target only wanted to test that the stream
-                        // was available but didn't need to use it.
-                        // Dispose the target to release any resources it may
-                        // have.
-                        target.Dispose();
                     }
                 }
             }
 
-            // Store the stream for when a target registers for the stream. If
-            // a target was already provided the stream, this will be null, thus
+            // Store the stream for when a handler registers later. If
+            // a handler already captured the stream, this will be null, thus
             // representing that no existing stream is waiting to be consumed.
             _stream = stream;
         }
@@ -229,7 +223,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return false;
         }
 
-        private void RegisterTarget(StreamTarget target)
+        private void RegisterHandler(Func<Stream, bool> handler)
         {
             lock (_lock)
             {
@@ -239,47 +233,13 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 {
                     _stream = RefreshStream();
                 }
-                _targets.Enqueue(target);
+                _handlers.Enqueue(handler);
 
                 if (_stream != null)
                 {
-                    BindStreamToTarget(_stream);
+                    RunStreamHandlers(_stream);
                 }
             }
-        }
-
-        /// <summary>
-        /// Base class for providing streams to callers.
-        /// </summary>
-        private class StreamTarget : IDisposable
-        {
-            private bool _isDisposed;
-            private Func<Stream, bool> _acceptStreamHandler;
-
-            public StreamTarget(Func<Stream, bool> acceptStreamHandler)
-            {
-                _acceptStreamHandler = acceptStreamHandler;
-            }
-
-            public void Dispose()
-            {
-                if (!_isDisposed)
-                {
-                    _isDisposed = true;
-                }
-            }
-
-            public bool SetStream(Stream stream)
-            {
-                if (_isDisposed)
-                {
-                    return false;
-                }
-
-                return AcceptStream(stream);
-            }
-
-            protected bool AcceptStream(Stream s) => _acceptStreamHandler(s);
         }
     }
 

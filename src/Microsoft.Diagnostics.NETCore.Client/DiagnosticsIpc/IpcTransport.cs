@@ -43,9 +43,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
         // This should be a large timeout in order to allow the runtime instance to reconnect and provide
         // a new stream once the previous stream has started its diagnostics request and response.
         private static readonly TimeSpan ConnectWaitTimeout = TimeSpan.FromSeconds(30);
-        // The amount of time to wait before testing the stream again after previously
-        // testing the stream within the WaitForConnectionAsync method.
-        private static readonly TimeSpan WaitForConnectionInterval = TimeSpan.FromMilliseconds(20);
 
         private readonly object _lock = new object();
         private readonly Queue<Func<Stream,bool>> _handlers = new Queue<Func<Stream,bool>>();
@@ -119,13 +116,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
                         // and will run later. Let it exit quickly.
                         ignore = true;
                     }
-                }
-
-                // If the stream is not connected, wait briefly to allow
-                // the runtime instance to possibly repopulate a new connection stream.
-                if (!isConnected)
-                {
-                    await Task.Delay(WaitForConnectionInterval, token);
                 }
             }
             while (!isConnected);

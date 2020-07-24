@@ -65,7 +65,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public Stream Connect()
         {
             using var streamEvent = new ManualResetEvent(false);
-            using var target = new StreamTarget(_streamSemaphore, false, _ => streamEvent.Set());
+            using var target = new StreamTarget(_ => streamEvent.Set());
 
             RegisterTarget(target);
 
@@ -82,7 +82,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 TaskCompletionSource<bool> hasConnectedStreamSource = new TaskCompletionSource<bool>();
                 using IDisposable _registration = token.Register(() => hasConnectedStreamSource.TrySetCanceled());
-                using (var target = new StreamTarget(_streamSemaphore, false,  s =>
+                using (var target = new StreamTarget(s =>
                 {
                     bool isConnected = TestStream(s);
                     if (isConnected)
@@ -141,19 +141,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
             ProvideStreamReleaseSemaphore(stream);
         }
 
-        /// <returns>
-        /// True if stream was accepted by a target and the target took ownership of the stream semaphore.
-        /// </returns>
-        private bool ProvideStreamReleaseSemaphore(Stream stream)
+        private void ProvideStreamReleaseSemaphore(Stream stream)
         {
-            return BindStreamToTarget(stream);
+            BindStreamToTarget(stream);
         }
 
-        private bool BindStreamToTarget(Stream stream)
+        private void BindStreamToTarget(Stream stream)
         {
             // Get the previous stream in order to dispose it later
             Stream previousStream = stream != _stream ? _stream : null;
-            bool targetOwnsSemaphore = false;
             try
             {
                 // If there are any targets waiting for a stream, provide
@@ -166,8 +162,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
                         if (target.SetStream(stream))
                         {
                             stream = null;
-
-                            targetOwnsSemaphore = target.ReleaseSemaphoreOnDispose;
                         }
                         else
                         {
@@ -195,16 +189,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
             }
             finally
             {
-                // If a target took ownership of the semaphore, don't release it.
-                if (!targetOwnsSemaphore)
-                {
-                    _streamSemaphore.Release();
-                }
+                _streamSemaphore.Release();
             }
-
-            // Return whether a target accepted the stream AND it acquired the stream
-            // semaphore so that the caller knows no to release the semaphore.
-            return targetOwnsSemaphore;
         }
 
         protected virtual Stream RefreshStream()
@@ -277,7 +263,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private void RegisterTargetReleaseSemaphore(StreamTarget target)
         {
-            bool targetOwnsSemaphore = false;
             try
             {
                 // Allow transport specific implementation to refresh
@@ -290,16 +275,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
                 if (_stream != null)
                 {
-                    targetOwnsSemaphore = BindStreamToTarget(_stream);
+                    BindStreamToTarget(_stream);
                 }
             }
             finally
             {
-                // If a target took ownership of the semaphore, don't release it.
-                if (!targetOwnsSemaphore)
-                {
-                    _streamSemaphore.Release();
-                }
+                _streamSemaphore.Release();
             }
         }
 
@@ -308,16 +289,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </summary>
         private class StreamTarget : IDisposable
         {
-            private readonly SemaphoreSlim _semaphore;
-
             private bool _isDisposed;
             private Func<Stream, bool> _acceptStreamHandler;
 
-            public StreamTarget(SemaphoreSlim semaphore, bool takeOwneshipOnAccept, Func<Stream, bool> acceptStreamHandler)
+            public StreamTarget(Func<Stream, bool> acceptStreamHandler)
             {
-                _semaphore = semaphore;
-
-                ReleaseSemaphoreOnDispose = takeOwneshipOnAccept;
                 _acceptStreamHandler = acceptStreamHandler;
             }
 
@@ -325,11 +301,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
             {
                 if (!_isDisposed)
                 {
-                    if (ReleaseSemaphoreOnDispose)
-                    {
-                        _semaphore.Release();
-                    }
-
                     _isDisposed = true;
                 }
             }
@@ -347,7 +318,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
                 if (!acceptedStream)
                 {
-                    ReleaseSemaphoreOnDispose = false;
                     Stream = null;
                 }
 
@@ -357,8 +327,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
             protected bool AcceptStream() => _acceptStreamHandler(Stream);
 
             public Stream Stream { get; private set; }
-
-            public bool ReleaseSemaphoreOnDispose { get; set; }
         }
     }
 

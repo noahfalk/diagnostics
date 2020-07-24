@@ -64,11 +64,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         public Stream Connect()
         {
-            using var target = new StreamEventTarget(_streamSemaphore);
+            using var streamEvent = new ManualResetEvent(false);
+            using var target = new StreamTarget(_streamSemaphore, false, () => streamEvent.Set());
 
             RegisterTarget(target);
 
-            target.Handle.WaitOne(ConnectWaitTimeout);
+            streamEvent.WaitOne(ConnectWaitTimeout);
 
             return target.Stream;
         }
@@ -79,7 +80,9 @@ namespace Microsoft.Diagnostics.NETCore.Client
             bool isConnected = false;
             do
             {
-                using (var target = new StreamTaskTarget(_streamSemaphore, token))
+                TaskCompletionSource<object> streamSource = new TaskCompletionSource<object>();
+                using IDisposable _registration = token.Register(() => streamSource.TrySetCanceled());
+                using (var target = new StreamTarget(_streamSemaphore, true,  () => streamSource.TrySetResult(null)))
                 {
                     Stream stream = null;
                     try
@@ -87,7 +90,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                         await RegisterTargetAsync(target, token);
 
                         // Wait for a stream to be provided by the target
-                        await target.Task;
+                        await streamSource.Task;
 
                         stream = target.Stream;
 
@@ -309,25 +312,25 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <summary>
         /// Base class for providing streams to callers.
         /// </summary>
-        private abstract class StreamTarget : IDisposable
+        private class StreamTarget : IDisposable
         {
             private readonly SemaphoreSlim _semaphore;
 
             private bool _isDisposed;
+            private Func<bool> _acceptStreamHandler;
 
-            protected StreamTarget(SemaphoreSlim semaphore, bool takeOwneshipOnAccept)
+            public StreamTarget(SemaphoreSlim semaphore, bool takeOwneshipOnAccept, Func<bool> acceptStreamHandler)
             {
                 _semaphore = semaphore;
 
                 ReleaseSemaphoreOnDispose = takeOwneshipOnAccept;
+                _acceptStreamHandler = acceptStreamHandler;
             }
 
             public void Dispose()
             {
                 if (!_isDisposed)
                 {
-                    Dispose(disposing: true);
-
                     if (ReleaseSemaphoreOnDispose)
                     {
                         _semaphore.Release();
@@ -336,8 +339,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     _isDisposed = true;
                 }
             }
-
-            protected abstract void Dispose(bool disposing);
 
             public bool SetStream(Stream stream)
             {
@@ -359,69 +360,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 return acceptedStream;
             }
 
-            protected abstract bool AcceptStream();
+            protected bool AcceptStream() => _acceptStreamHandler();
 
             public Stream Stream { get; private set; }
 
             public bool ReleaseSemaphoreOnDispose { get; set; }
-        }
-
-        /// <summary>
-        /// Class allowing for synchronously waiting on the availability of a stream.
-        /// </summary>
-        private class StreamEventTarget : StreamTarget
-        {
-            private readonly ManualResetEvent _streamEvent = new ManualResetEvent(false);
-
-            public StreamEventTarget(SemaphoreSlim semaphore)
-                : base(semaphore, takeOwneshipOnAccept: false)
-            {
-            }
-
-            protected override void Dispose(bool disposing)
-            {
-                if (disposing)
-                {
-                    _streamEvent.Dispose();
-                }
-            }
-
-            protected override bool AcceptStream()
-            {
-                return _streamEvent.Set();
-            }
-
-            public WaitHandle Handle => _streamEvent;
-        }
-
-        /// <summary>
-        /// Class allowing for asynchronously waiting on the availability of a stream.
-        /// </summary>
-        private class StreamTaskTarget : StreamTarget
-        {
-            private readonly IDisposable _registration;
-            private readonly TaskCompletionSource<object> _streamSource = new TaskCompletionSource<object>();
-
-            public StreamTaskTarget(SemaphoreSlim semaphore, CancellationToken token)
-                : base(semaphore, takeOwneshipOnAccept: true)
-            {
-                _registration = token.Register(() => _streamSource.TrySetCanceled());
-            }
-
-            protected override void Dispose(bool disposing)
-            {
-                if (disposing)
-                {
-                    _registration.Dispose();
-                }
-            }
-
-            protected override bool AcceptStream()
-            {
-                return _streamSource.TrySetResult(null);
-            }
-
-            public Task Task => _streamSource.Task;
         }
     }
 

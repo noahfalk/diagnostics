@@ -69,7 +69,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 return streamEvent.Set();
             });
 
-            streamEvent.WaitOne(ConnectWaitTimeout);
+            if(streamEvent.WaitOne(ConnectWaitTimeout))
+            {
+                throw new TimeoutException();
+            }
 
             return stream;
         }

@@ -65,13 +65,18 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public Stream Connect()
         {
             using var streamEvent = new ManualResetEvent(false);
-            using var target = new StreamTarget(_ => streamEvent.Set());
+            Stream stream = null;
+            using var target = new StreamTarget(s =>
+            {
+                stream = s;
+                return streamEvent.Set();
+            });
 
             RegisterTarget(target);
 
             streamEvent.WaitOne(ConnectWaitTimeout);
 
-            return target.Stream;
+            return stream;
         }
 
         /// <inheritdoc cref="IIpcEndpoint.WaitForConnectionAsync(CancellationToken)"/>
@@ -312,21 +317,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     return false;
                 }
 
-                Stream = stream;
-
-                bool acceptedStream = AcceptStream();
-
-                if (!acceptedStream)
-                {
-                    Stream = null;
-                }
-
-                return acceptedStream;
+                return AcceptStream(stream);
             }
 
-            protected bool AcceptStream() => _acceptStreamHandler(Stream);
-
-            public Stream Stream { get; private set; }
+            protected bool AcceptStream(Stream s) => _acceptStreamHandler(s);
         }
     }
 

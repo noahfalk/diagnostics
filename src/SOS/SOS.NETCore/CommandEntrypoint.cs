@@ -1,4 +1,5 @@
-﻿using SOS.Dbgeng.Interop;
+﻿using SOS.Dbgeng;
+using SOS.Dbgeng.Interop;
 using System;
 using System.Runtime.InteropServices;
 
@@ -13,7 +14,8 @@ namespace SOS
             [MarshalAs(UnmanagedType.LPStr)] string args)
         {
             IDebugClient client = (IDebugClient)Marshal.GetObjectForIUnknown(debugClient);
-            client.OutputIdentity(DEBUG_OUTCTL.THIS_CLIENT, 0, "Managed code ran!");
+            ConsoleService console = new ConsoleService(client);
+            console.Write("Managed code run!" + Environment.NewLine);
             return 1; // S_FALSE
         }
     }

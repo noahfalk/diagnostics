@@ -5,6 +5,8 @@ if(NOT ${CLR_MANAGED_BINARY_DIR} STREQUAL "")
 
     install(FILES ${MANAGED_BINDIR}/SOS.NETCore.dll DESTINATION . )
     install(FILES ${MANAGED_BINDIR}/SOS.NETCore.pdb DESTINATION . )
+    install(FILES ${MANAGED_BINDIR}/Microsoft.Diagnostics.DebugServices.Abstractions.dll DESTINATION . )
+    install(FILES ${MANAGED_BINDIR}/Microsoft.Diagnostics.DebugServices.Abstractions.pdb DESTINATION . )
     install(FILES ${MANAGED_BINDIR}/Microsoft.FileFormats.dll DESTINATION . )
     install(FILES ${MANAGED_BINDIR}/Microsoft.SymbolStore.dll DESTINATION . )
     install(FILES ${MANAGED_BINDIR}/System.Reflection.Metadata.dll DESTINATION . )

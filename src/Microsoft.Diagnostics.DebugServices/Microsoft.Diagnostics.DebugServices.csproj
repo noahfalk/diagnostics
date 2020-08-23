@@ -19,6 +19,7 @@
   </ItemGroup>
   
   <ItemGroup>
+    <ProjectReference Include="..\Microsoft.Diagnostics.DebugServices.Abstractions\Microsoft.Diagnostics.DebugServices.Abstractions.csproj" />
     <ProjectReference Include="..\SOS\SOS.NETCore\SOS.NETCore.csproj" />
   </ItemGroup>
 </Project>

@@ -51,6 +51,13 @@ typedef  BOOL (*GetMetadataLocatorDelegate)(
     unsigned int* pMetadataSize
 );
 
+typedef  HRESULT(*TryRunCommandDelegate)(
+    LPCSTR commandName,
+    PVOID pXClrData,
+    PVOID pDebugClient,
+    LPCSTR args
+    );
+
 struct SOSNetCoreCallbacks
 {
     InitializeSymbolStoreDelegate InitializeSymbolStoreDelegate;
@@ -65,11 +72,13 @@ struct SOSNetCoreCallbacks
     GetLocalVariableNameDelegate GetLocalVariableNameDelegate;
     GetMetadataLocatorDelegate GetMetadataLocatorDelegate;
     GetExpressionDelegate GetExpressionDelegate;
+    TryRunCommandDelegate TryRunCommandDelegate;
 };
 
 static const char *SOSManagedDllName = "SOS.NETCore";
 static const char *SymbolReaderClassName = "SOS.SymbolReader";
 static const char *MetadataHelperClassName = "SOS.MetadataHelper";
+static const char* CommandEntrypointClassName = "SOS.CommandEntrypoint";
 
 extern HMODULE g_hInstance;
 extern LPCSTR g_hostRuntimeDirectory;
@@ -114,6 +123,12 @@ extern HRESULT GetMetadataLocator(
     ULONG32 bufferSize,
     BYTE* buffer,
     ULONG32* dataSize);
+
+extern HRESULT TryRunCommand(
+    LPCSTR commandName,
+    PVOID xClrData,
+    PVOID debugClient,
+    LPCSTR args);
 
 class SymbolReader
 {

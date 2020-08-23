@@ -2204,6 +2204,7 @@ inline BOOL IsKernelDebugger ()
 
 void    ResetGlobals(void);
 HRESULT LoadClrDebugDll(void);
+HRESULT TryInterceptCommand(PCSTR commandName, PDEBUG_CLIENT client, PCSTR args);
 
 extern IMetaDataImport* MDImportForModule (DacpModuleData *pModule);
 extern IMetaDataImport* MDImportForModule (DWORD_PTR pModule);

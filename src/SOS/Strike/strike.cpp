@@ -4621,7 +4621,7 @@ void FindStateMachineTypes(DWORD_PTR* corelibModule, mdTypeDef* stateMachineBox,
 
 DECLARE_API(DumpAsync)
 {
-    INIT_API();
+    INIT_INTERCEPTABLE_API("DumpAsync");
     MINIDUMP_NOT_SUPPORTED();
     if (!g_snapshot.Build())
     {

@@ -296,6 +296,14 @@ HRESULT CheckEEDll();
     INIT_API_NODAC()                                            \
     INIT_API_DAC()
 
+#define INIT_INTERCEPTABLE_API(commandName)                     \
+    INIT_API();                                                 \
+    Status = TryInterceptCommand(commandName, client, args);    \
+    if(Status == S_OK || FAILED(Status))                        \
+    {                                                           \
+        return Status;                                          \
+    }                                                           \
+
 // Attempt to initialize DAC and SOS globals, but do not "return" on failure.
 // Instead, mark the failure to initialize the DAC by setting g_bDacBroken to TRUE.
 // This should be used from extension commands that should work OK even when no

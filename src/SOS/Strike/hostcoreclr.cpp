@@ -630,6 +630,7 @@ HRESULT InitializeHosting()
     IfFailRet(createDelegate(hostHandle, domainId, SOSManagedDllName, SymbolReaderClassName, "GetLocalVariableName", (void **)&g_SOSNetCoreCallbacks.GetLocalVariableNameDelegate));
     IfFailRet(createDelegate(hostHandle, domainId, SOSManagedDllName, SymbolReaderClassName, "GetLineByILOffset", (void **)&g_SOSNetCoreCallbacks.GetLineByILOffsetDelegate));
     IfFailRet(createDelegate(hostHandle, domainId, SOSManagedDllName, MetadataHelperClassName, "GetMetadataLocator", (void **)&g_SOSNetCoreCallbacks.GetMetadataLocatorDelegate));
+    IfFailRet(createDelegate(hostHandle, domainId, SOSManagedDllName, CommandEntrypointClassName, "TryRunCommand", (void**)&g_SOSNetCoreCallbacks.TryRunCommandDelegate));
 
     g_hostingInitialized = true;
     return Status;
@@ -837,6 +838,23 @@ HRESULT GetMetadataLocator(
 
     _ASSERTE(g_SOSNetCoreCallbacks.GetMetadataLocatorDelegate != nullptr);
     return g_SOSNetCoreCallbacks.GetMetadataLocatorDelegate(imagePath, imageTimestamp, imageSize, mvid, mdRva, flags, bufferSize, buffer, dataSize);
+}
+
+/**********************************************************************\
+ * Attempts to dispatch a command to a managed implementation
+ * If there is no managed implementation this returns S_FALSE and the
+ * native impl should run
+\**********************************************************************/
+HRESULT TryRunCommand(
+    LPCSTR commandName,
+    PVOID pXClrData,
+    PVOID debugClient,
+    LPCSTR args)
+{
+    HRESULT Status = S_OK;
+    IfFailRet(InitializeHosting());
+    _ASSERTE(g_SOSNetCoreCallbacks.TryRunCommandDelegate != nullptr);
+    return g_SOSNetCoreCallbacks.TryRunCommandDelegate(commandName, pXClrData, debugClient, args);
 }
 
 #ifndef FEATURE_PAL

@@ -4010,6 +4010,11 @@ HRESULT LoadClrDebugDll(void)
     return S_OK;
 }
 
+HRESULT TryInterceptCommand(PCSTR commandName, PDEBUG_CLIENT client, PCSTR args)
+{
+    return TryRunCommand(commandName, g_clrData, client, args);
+}
+
 typedef enum
 {
     GC_HEAP_INVALID = 0,

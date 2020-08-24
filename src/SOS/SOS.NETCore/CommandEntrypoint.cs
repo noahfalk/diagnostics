@@ -1,6 +1,8 @@
-﻿using SOS.Dbgeng;
+﻿using Microsoft.Diagnostics.Runtime;
+using SOS.Dbgeng;
 using SOS.Dbgeng.Interop;
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace SOS
@@ -15,8 +17,18 @@ namespace SOS
         {
             IDebugClient client = (IDebugClient)Marshal.GetObjectForIUnknown(debugClient);
             ConsoleService console = new ConsoleService(client);
-            console.Write("Managed code run!" + Environment.NewLine);
-            return 1; // S_FALSE
+            DataTarget target = DataTarget.CreateFromDebuggerInterface(
+                (Microsoft.Diagnostics.Runtime.Interop.IDebugClient)Marshal.GetObjectForIUnknown(debugClient));
+            ClrRuntime r = target.ClrVersions[0].CreateRuntime();
+
+            switch(commandName)
+            {
+                case "DumpAsync":
+                    DumpAsync.Run(console, r);
+                    return 0;
+                default:
+                    return 1;
+            }
         }
     }
 }

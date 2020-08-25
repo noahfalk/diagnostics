@@ -17,16 +17,13 @@ namespace Microsoft.Diagnostics.NETCore.Client
     /// </summary>
     internal class HandleableCollection<T> : IEnumerable<T>, IDisposable
     {
-        public delegate bool Handler(in T item, out bool removeItem);
-
-        public delegate bool Predicate(in T item);
+        public delegate bool Handler(T item, out bool removeItem);
 
         /// <summary>
         /// Accepts the first item it encounters and requests that the item is removed from the collection.
         /// </summary>
-        private static readonly Handler DefaultHandler = (in T item, out bool removeItem) => { removeItem = true; return true; };
+        private static readonly Handler DefaultHandler = (T item, out bool removeItem) => { removeItem = true; return true; };
 
-        private readonly CancellationTokenSource _disposalSource = new CancellationTokenSource();
         private readonly List<T> _items = new List<T>();
         private readonly List<Tuple<TaskCompletionSource<T>, Handler>> _handlers = new List<Tuple<TaskCompletionSource<T>, Handler>>();
 
@@ -74,13 +71,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         public void Dispose()
         {
-            lock(_items)
+            lock (_items)
             {
                 if (_disposed) return;
                 _disposed = true;
             }
 
-            _disposalSource.Cancel();
             foreach (T item in _items)
             {
                 if (item is IDisposable disposable)
@@ -89,8 +85,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 }
             }
             _items.Clear();
+
+            foreach(Tuple<TaskCompletionSource<T>, Handler> handlerTuple in _handlers)
+            {
+                handlerTuple.Item1.TrySetException(new ObjectDisposedException(nameof(HandleableCollection<T>)));
+            }
             _handlers.Clear();
-            _disposalSource.Dispose();
         }
 
         /// <summary>
@@ -143,14 +143,13 @@ namespace Microsoft.Diagnostics.NETCore.Client
         public T Handle(Handler handler, TimeSpan timeout)
         {
             using var cancellation = new CancellationTokenSource(timeout);
-            Task<T> handleTask = HandleAsync(
-                handler,
-                tcs => tcs.TrySetException(new TimeoutException()),
-                cancellation.Token);
+            var completionSource = new TaskCompletionSource<T>();
+            using var methodRegistration = cancellation.Token.Register(() => completionSource.TrySetException(new TimeoutException()));
+            RunHandler(handler, completionSource, cancellation.Token);
 
             try
             {
-                return handleTask.Result;
+                return completionSource.Task.Result;
             }
             catch (AggregateException ex)
             {
@@ -173,54 +172,40 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="handler">The handler that determines on which item to complete.</param>
         /// <param name="token">The token to monitor for cancellation requests.</param>
         /// <returns>A task that completes with the item on which the handler completes.</returns>
-        public Task<T> HandleAsync(Handler handler, CancellationToken token) => 
-            HandleAsync(
-                handler,
-                tcs => tcs.TrySetCanceled(token),
-                token);
-
-        private async Task<T> HandleAsync(Handler handler, Action<TaskCompletionSource<T>> tokenCallback, CancellationToken token)
+        public async Task<T> HandleAsync(Handler handler, CancellationToken token)
         {
-            var completionSource = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-            CancellationTokenRegistration methodRegistration = default;
-            CancellationTokenRegistration disposalRegistration = default;
-            try
+            var completionSource = new TaskCompletionSource<T>();
+            using var methodRegistration = token.Register(() => completionSource.TrySetCanceled(token));
+            RunHandler(handler, completionSource, token);
+            return await completionSource.Task.ConfigureAwait(false);
+        }
+
+
+        private void RunHandler(Handler handler, TaskCompletionSource<T> completionSource, CancellationToken token)
+        {
+            lock (_items)
             {
-                lock (_items)
+                VerifyNotDisposed();
+                OnHandlerBegin();
+
+                bool stopHandling = false;
+                for (int i = 0; !stopHandling && i < _items.Count; i++)
                 {
-                    VerifyNotDisposed();
-                    methodRegistration = token.Register(() => tokenCallback(completionSource));
-                    disposalRegistration = _disposalSource.Token.Register(
-                        () => completionSource.TrySetException(new ObjectDisposedException(nameof(HandleableCollection<T>))));
+                    T item = _items[i];
 
-                    OnHandlerBegin();
+                    stopHandling = TryHandler(item, handler, completionSource, out bool removeItem);
 
-                    bool stopHandling = false;
-                    for (int i = 0; !stopHandling && i < _items.Count; i++)
+                    if (removeItem)
                     {
-                        T item = _items[i];
-
-                        stopHandling = TryHandler(item, handler, completionSource, out bool removeItem);
-
-                        if (removeItem)
-                        {
-                            _items.RemoveAt(i);
-                            i--;
-                        }
-                    }
-
-                    if (!stopHandling)
-                    {
-                        _handlers.Add(Tuple.Create(completionSource, handler));
+                        _items.RemoveAt(i);
+                        i--;
                     }
                 }
 
-                return await completionSource.Task.ConfigureAwait(false);
-            }
-            finally
-            {
-                methodRegistration.Dispose();
-                disposalRegistration.Dispose();
+                if (!stopHandling)
+                {
+                    _handlers.Add(Tuple.Create(completionSource, handler));
+                }
             }
         }
 

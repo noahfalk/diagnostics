@@ -272,7 +272,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             await GetStreams(runtimeInstanceCookie).HandleAsync(WaitForConnectionHandler, token).ConfigureAwait(false);
         }
 
-        private static bool WaitForConnectionHandler(in Stream item, out bool removeItem)
+        private static bool WaitForConnectionHandler(Stream item, out bool removeItem)
         {
             if (!TestStream(item))
             {

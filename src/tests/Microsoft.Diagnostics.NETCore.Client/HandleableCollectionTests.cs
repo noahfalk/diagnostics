@@ -33,7 +33,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             AddRangeAndVerifyItems(collection, endInclusive: 9);
 
-            HandleableCollection<int>.Handler handler = (in int item, out bool removeItem) =>
+            HandleableCollection<int>.Handler handler = (int item, out bool removeItem) =>
             {
                 removeItem = false;
                 return 20 == item;
@@ -73,8 +73,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
             await Assert.ThrowsAsync<ObjectDisposedException>(
                 () => collection.HandleAsync(handler, cancellation.Token));
-
-            HandleableCollection<int>.Predicate predicate = (in int item) => false;
 
             Assert.Throws<ObjectDisposedException>(
                 () => collection.Clear());
@@ -153,7 +151,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             const int expectedItem = 7;
             AddRangeAndVerifyItems(collection, endInclusive: expectedItem);
 
-            HandleableCollection<int>.Handler handler = (in int item, out bool removeItem) =>
+            HandleableCollection<int>.Handler handler = (int item, out bool removeItem) =>
             {
                 removeItem = false;
 
@@ -198,7 +196,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             Task handlerBeginTask = collection.WaitForHandlerBeginAsync(DefaultPositiveVerificationTimeout);
 
             const int expectedItem = 3;
-            HandleableCollection<int>.Handler handler = (in int item, out bool removeItem) =>
+            HandleableCollection<int>.Handler handler = (int item, out bool removeItem) =>
             {
                 // Terminate handler on some item in the middle of the collection
                 if (expectedItem == item)
@@ -263,7 +261,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             AddRangeAndVerifyItems(collection, endInclusive: 4);
 
             const int expectedItem = 2;
-            HandleableCollection<int>.Handler handler = (in int item, out bool removeItem) =>
+            HandleableCollection<int>.Handler handler = (int item, out bool removeItem) =>
             {
                 // Do not remove any item (the purpose of this test is to handle an
                 // item without removing it).

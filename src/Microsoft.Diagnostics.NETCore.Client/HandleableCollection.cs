@@ -5,6 +5,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -39,11 +40,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         IEnumerator IEnumerable.GetEnumerator()
         {
-            VerifyNotDisposed();
-
             IList<T> copy;
             lock (_items)
             {
+                VerifyNotDisposed();
                 copy = _items.ToList();
             }
             return copy.GetEnumerator();
@@ -57,11 +57,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         IEnumerator<T> IEnumerable<T>.GetEnumerator()
         {
-            VerifyNotDisposed();
-
             IList<T> copy;
             lock (_items)
             {
+                VerifyNotDisposed();
                 copy = _items.ToList();
             }
             return copy.GetEnumerator();
@@ -75,21 +74,23 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         public void Dispose()
         {
-            if (!_disposed)
+            lock(_items)
             {
-                _disposalSource.Cancel();
-
-                lock (_items)
-                {
-                    _items.Clear();
-
-                    _handlers.Clear();
-                }
-
-                _disposalSource.Dispose();
-
+                if (_disposed) return;
                 _disposed = true;
             }
+
+            _disposalSource.Cancel();
+            foreach (T item in _items)
+            {
+                if (item is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
+            }
+            _items.Clear();
+            _handlers.Clear();
+            _disposalSource.Dispose();
         }
 
         /// <summary>
@@ -102,10 +103,9 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </remarks>
         public void Add(in T item)
         {
-            VerifyNotDisposed();
-
             lock (_items)
             {
+                VerifyNotDisposed();
                 bool handledValue = false;
                 for (int i = 0; !handledValue && i < _handlers.Count; i++)
                 {
@@ -131,12 +131,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </summary>
         /// <param name="timeout">The amount of time to wait before cancelling the handler.</param>
         /// <returns>The first item offered to the handler.</returns>
-        public T Handle(TimeSpan timeout)
-        {
-            VerifyNotDisposed();
-
-            return Handle(DefaultHandler, timeout);
-        }
+        public T Handle(TimeSpan timeout) => Handle(DefaultHandler, timeout);
 
         /// <summary>
         /// Returns the item on which the handler completes or waits for future items
@@ -147,8 +142,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <returns>The item on which the handler completes.</returns>
         public T Handle(Handler handler, TimeSpan timeout)
         {
-            VerifyNotDisposed();
-
             using var cancellation = new CancellationTokenSource(timeout);
             Task<T> handleTask = HandleAsync(
                 handler,
@@ -171,12 +164,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </summary>
         /// <param name="token">The token to monitor for cancellation requests.</param>
         /// <returns>A task that completes with the first item offered to the handler.</returns>
-        public Task<T> HandleAsync(CancellationToken token)
-        {
-            VerifyNotDisposed();
-
-            return HandleAsync(DefaultHandler, token);
-        }
+        public Task<T> HandleAsync(CancellationToken token) => HandleAsync(DefaultHandler, token);
 
         /// <summary>
         /// Returns the item on which the handler completes and waits for future items
@@ -185,48 +173,55 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="handler">The handler that determines on which item to complete.</param>
         /// <param name="token">The token to monitor for cancellation requests.</param>
         /// <returns>A task that completes with the item on which the handler completes.</returns>
-        public Task<T> HandleAsync(Handler handler, CancellationToken token)
-        {
-            VerifyNotDisposed();
-
-            return HandleAsync(
+        public Task<T> HandleAsync(Handler handler, CancellationToken token) => 
+            HandleAsync(
                 handler,
                 tcs => tcs.TrySetCanceled(token),
                 token);
-        }
 
         private async Task<T> HandleAsync(Handler handler, Action<TaskCompletionSource<T>> tokenCallback, CancellationToken token)
         {
             var completionSource = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var methodRegistration = token.Register(() => tokenCallback(completionSource));
-            using var disposalRegistration = _disposalSource.Token.Register(
-                () => completionSource.TrySetException(new ObjectDisposedException(nameof(HandleableCollection<T>))));
-
-            lock (_items)
+            CancellationTokenRegistration methodRegistration = default;
+            CancellationTokenRegistration disposalRegistration = default;
+            try
             {
-                OnHandlerBegin();
-
-                bool stopHandling = false;
-                for (int i = 0; !stopHandling && i < _items.Count; i++)
+                lock (_items)
                 {
-                    T item = _items[i];
+                    VerifyNotDisposed();
+                    methodRegistration = token.Register(() => tokenCallback(completionSource));
+                    disposalRegistration = _disposalSource.Token.Register(
+                        () => completionSource.TrySetException(new ObjectDisposedException(nameof(HandleableCollection<T>))));
 
-                    stopHandling = TryHandler(item, handler, completionSource, out bool removeItem);
+                    OnHandlerBegin();
 
-                    if (removeItem)
+                    bool stopHandling = false;
+                    for (int i = 0; !stopHandling && i < _items.Count; i++)
                     {
-                        _items.RemoveAt(i);
-                        i--;
+                        T item = _items[i];
+
+                        stopHandling = TryHandler(item, handler, completionSource, out bool removeItem);
+
+                        if (removeItem)
+                        {
+                            _items.RemoveAt(i);
+                            i--;
+                        }
+                    }
+
+                    if (!stopHandling)
+                    {
+                        _handlers.Add(Tuple.Create(completionSource, handler));
                     }
                 }
 
-                if (!stopHandling)
-                {
-                    _handlers.Add(Tuple.Create(completionSource, handler));
-                }
+                return await completionSource.Task.ConfigureAwait(false);
             }
-
-            return await completionSource.Task.ConfigureAwait(false);
+            finally
+            {
+                methodRegistration.Dispose();
+                disposalRegistration.Dispose();
+            }
         }
 
         private static bool TryHandler(in T item, Handler handler, TaskCompletionSource<T> completionSource, out bool removeItem)
@@ -251,11 +246,10 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </summary>
         public void Clear()
         {
-            VerifyNotDisposed();
-
             List<T> itemsCopy;
             lock (_items)
             {
+                VerifyNotDisposed();
                 itemsCopy = new List<T>(_items);
                 _items.Clear();
             }
@@ -270,6 +264,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         protected void VerifyNotDisposed()
         {
+            Debug.Assert(Monitor.IsEntered(_items));
             if (_disposed)
             {
                 throw new ObjectDisposedException(nameof(HandleableCollection<T>));

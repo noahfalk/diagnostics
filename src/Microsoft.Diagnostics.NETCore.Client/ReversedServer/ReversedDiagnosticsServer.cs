@@ -71,10 +71,6 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
                 foreach (HandleableCollection<Stream> runtimeStreams in _streams.Values)
                 {
-                    foreach(Stream s in runtimeStreams)
-                    {
-                        s.Dispose();
-                    }
                     runtimeStreams.Dispose();
                 }
 

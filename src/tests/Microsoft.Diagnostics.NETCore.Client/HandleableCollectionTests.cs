@@ -77,10 +77,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             HandleableCollection<int>.Predicate predicate = (in int item) => false;
 
             Assert.Throws<ObjectDisposedException>(
-                () => collection.TryRemove(predicate, out int oldItem));
-
-            Assert.Throws<ObjectDisposedException>(
-                () => collection.TryReplace(predicate, 10, out int oldItem));
+                () => collection.Clear());
 
             Assert.Throws<ObjectDisposedException>(
                 () => ((IEnumerable)collection).GetEnumerator());
@@ -288,65 +285,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// removes an item if the predicate is satisfied and does not make modifications if not satisfied.
         /// </summary>
         [Fact]
-        public void HandleableCollectionTryRemoveTest()
+        public void HandleableCollectionClearTest()
         {
             using var collection = new HandleableCollection<int>();
             Assert.Empty(collection);
 
             AddRangeAndVerifyItems(collection, endInclusive: 4);
 
-            const int expectedItem = 2;
-            HandleableCollection<int>.Predicate successPredicate = (in int item) =>
-            {
-                return expectedItem == item;
-            };
-
-            int oldItem;
-            Assert.True(collection.TryRemove(successPredicate, out oldItem));
-            Assert.Equal(expectedItem, oldItem);
-            Assert.Equal(new int[] { 0, 1, 3, 4 }, collection);
-
-            HandleableCollection<int>.Predicate failedPredicate = (in int item) =>
-            {
-                return 8 == item;
-            };
-
-            Assert.False(collection.TryRemove(failedPredicate, out oldItem));
-            Assert.Equal(default, oldItem);
-            Assert.Equal(new int[] { 0, 1, 3, 4 }, collection);
-        }
-
-        /// <summary>
-        /// Tests that the <see cref="HandleableCollection{T}.TryReplace(HandleableCollection{T}.Predicate, in T, out T)"/> method
-        /// replaces an item if the predicate is satisfied and does not make modifications if not satisfied.
-        /// </summary>
-        [Fact]
-        public void HandleableCollectionTryReplaceTest()
-        {
-            using var collection = new HandleableCollection<int>();
+            collection.Clear();
             Assert.Empty(collection);
-
-            AddRangeAndVerifyItems(collection, endInclusive: 4);
-
-            const int expectedItem = 2;
-            HandleableCollection<int>.Predicate successPredicate = (in int item) =>
-            {
-                return expectedItem == item;
-            };
-
-            int oldItem;
-            Assert.True(collection.TryReplace(successPredicate, 10, out oldItem));
-            Assert.Equal(expectedItem, oldItem);
-            Assert.Equal(new int[] { 0, 1, 10, 3, 4 }, collection);
-
-            HandleableCollection<int>.Predicate failedPredicate = (in int item) =>
-            {
-                return 8 == item;
-            };
-
-            Assert.False(collection.TryReplace(failedPredicate, 15, out oldItem));
-            Assert.Equal(default, oldItem);
-            Assert.Equal(new int[] { 0, 1, 10, 3, 4 }, collection);
         }
 
         private static void AddAndVerifyItems<T>(HandleableCollection<T> collection, IEnumerable<(T, int)> itemsAndCounts)

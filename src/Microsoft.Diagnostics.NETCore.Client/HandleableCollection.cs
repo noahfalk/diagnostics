@@ -247,58 +247,25 @@ namespace Microsoft.Diagnostics.NETCore.Client
         }
 
         /// <summary>
-        /// Attempts to remove the first item that satisfies the <paramref name="predicate"/>.
+        /// Removes all items
         /// </summary>
-        /// <param name="predicate">A predicate to determine which item should be removed.</param>
-        /// <param name="oldItem">If the predicate is satisfied, the item that is removed.</param>
-        /// <returns>True if an item satifies the predicate; otherwise false.</returns>
-        public bool TryRemove(Predicate predicate, out T oldItem)
+        public void Clear()
         {
             VerifyNotDisposed();
 
+            List<T> itemsCopy;
             lock (_items)
             {
-                for (int i = 0; i < _items.Count; i++)
-                {
-                    if (predicate(_items[i]))
-                    {
-                        oldItem = _items[i];
-                        _items.RemoveAt(i);
-                        return true;
-                    }
-                }
+                itemsCopy = new List<T>(_items);
+                _items.Clear();
             }
-
-            oldItem = default;
-            return false;
-        }
-
-        /// <summary>
-        /// Attempts to replace the first item that satisfies the <paramref name="predicate"/>.
-        /// </summary>
-        /// <param name="predicate">A predicate to determine which item should be replaced.</param>
-        /// <param name="newItem">The new item that should replace the item that satisfies the predicate.</param>
-        /// <param name="oldItem">If the predicate is satisfied, the item that is removed.</param>
-        /// <returns>True if an item satifies the predicate; otherwise false.</returns>
-        public bool TryReplace(Predicate predicate, in T newItem, out T oldItem)
-        {
-            VerifyNotDisposed();
-
-            lock (_items)
+            foreach(T item in itemsCopy)
             {
-                for (int i = 0; i < _items.Count; i++)
+                if(item is IDisposable disposable)
                 {
-                    if (predicate(_items[i]))
-                    {
-                        oldItem = _items[i];
-                        _items[i] = newItem;
-                        return true;
-                    }
+                    disposable.Dispose();
                 }
             }
-
-            oldItem = default;
-            return false;
         }
 
         protected void VerifyNotDisposed()

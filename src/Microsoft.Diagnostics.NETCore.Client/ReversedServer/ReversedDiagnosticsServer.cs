@@ -151,10 +151,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             endpointExisted = _runtimeInstanceCookies.Remove(runtimeCookie);
             if (endpointExisted && _streams.TryGetValue(runtimeCookie, out HandleableCollection<Stream> runtimeStreams))
             {
-                if (runtimeStreams.TryRemove((in Stream s) => true, out Stream previousStream))
-                {
-                    previousStream.Dispose();
-                }
+                runtimeStreams.Clear();
             }
 
             return endpointExisted;
@@ -225,16 +222,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     int pid = unchecked((int)advertise.ProcessId);
 
                     HandleableCollection<Stream> runtimeStreams = GetStreams(runtimeCookie);
-
-                    // Attempt to update the existing stream or add as new stream
-                    if (runtimeStreams.TryReplace((in Stream s) => true, stream, out Stream previousStream))
-                    {
-                        previousStream?.Dispose();
-                    }
-                    else
-                    {
-                        runtimeStreams.Add(stream);
-                    }
+                    runtimeStreams.Clear();
+                    runtimeStreams.Add(stream);
 
                     // Add new endpoint information if not already tracked
                     if (_runtimeInstanceCookies.Add(runtimeCookie))
